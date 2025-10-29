@@ -1,0 +1,1027 @@
+<!--
+ * Copyright (C) 2021-2025 Intel Corporation
+ * SPDX-License-Identifier: BSD-3-Clause
+-->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>Intel&reg; PerfSpect</title>
+  <link rel="icon" type="image/x-icon" href="https://www.intel.com/favicon.ico" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1, width=device-width" />
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@mui/material@5.16.7/umd/material-ui.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/babel-standalone@6.26.0/babel.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.3.3/echarts.min.js"
+    integrity="sha512-2L0h0GhoIHQEjti/1KwfjcbyaTHy+hPPhE1o5wTCmviYcPO/TD9oZvUxFQtWvBkCSTIpt+fjsx1CCx6ekb51gw=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <!-- Fonts to support Material Design -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" />
+  <!-- Icons to support Material Design -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const {
+      colors,
+      CssBaseline,
+      ThemeProvider,
+      Container,
+      createTheme,
+      Typography,
+      Button,
+      IconButton,
+      ButtonGroup,
+      Slider,
+      Grid,
+      Box,
+      Tab,
+      Dialog,
+      Alert,
+      Snackbar,
+      Link,
+      Tabs,
+      TextField,
+      Icon,
+      Table,
+      TableBody,
+      TableCell,
+      TableContainer,
+      TableHead,
+      TableRow,
+      Tooltip,
+      Paper,
+    } = MaterialUI;
+
+    // Create a theme instance.
+    const theme = createTheme({
+      typography: {
+        fontSize: 14,
+        h2: {
+          fontSize: "2.5rem",
+        },
+        fontFamily: [
+          "-apple-system",
+          "BlinkMacSystemFont",
+          '"Segoe UI"',
+          "Roboto",
+          '"Helvetica Neue"',
+          "Arial",
+          "sans-serif",
+          '"Apple Color Emoji"',
+          '"Segoe UI Emoji"',
+          '"Segoe UI Symbol"',
+        ].join(","),
+      },
+      palette: {
+        mode: 'light',
+      },
+    });
+
+    function ReactECharts({ option, style, settings, loading, theme }) {
+      const chartRef = React.useRef("null");
+
+      React.useEffect(() => {
+        // Initialize chart
+        let chart;
+        if (chartRef.current !== null) {
+          chart = echarts.init(chartRef.current, theme);
+        }
+
+        // Add chart resize listener
+        // ResizeObserver is leading to a bit janky UX
+        function resizeChart() {
+          chart.resize();
+        }
+        window.addEventListener("resize", resizeChart);
+
+        // Return cleanup function
+        return () => {
+          chart.dispose();
+          window.removeEventListener("resize", resizeChart);
+        };
+      }, [theme]);
+
+      React.useEffect(() => {
+        // Update chart
+        if (chartRef.current !== null) {
+          const chart = echarts.getInstanceByDom(chartRef.current);
+          chart.setOption(option, settings);
+        }
+      }, [option, settings, theme]); // Whenever theme changes we need to add option and setting due to it being deleted in cleanup function
+
+      React.useEffect(() => {
+        // Update chart
+        if (chartRef.current !== null) {
+          const chart = echarts.getInstanceByDom(chartRef.current);
+          // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+          loading === true ? chart.showLoading() : chart.hideLoading();
+        }
+      }, [loading, theme]);
+
+      return (
+        <div
+          ref={chartRef}
+          style={{ width: "100%", height: "100%", ...style }}
+        />
+      );
+      }
+
+    function TabPanel(props) {
+      const { children, value, index, ...other } = props;
+
+      return (
+        <div
+          role="tabpanel"
+          hidden={value !== index}
+          id={`simple-tabpanel-${index}`}
+          aria-labelledby={`simple-tab-${index}`}
+          {...other}
+        >
+          {value === index && (
+            <div style={{ height: "100%" }}>{children}</div>
+          )}
+        </div>
+      );
+    }
+
+    function App() {
+      const [systemTabs, setSystemTabs] = React.useState(0);
+      const [openlink, setOpenlink] = React.useState(true);
+      const [maxdiff, set_maxdiff] = React.useState(0);
+      const [mindiff, set_mindiff] = React.useState(0);
+      
+      const handleChange = (event, newSystemTabs) => {
+        setSystemTabs(newSystemTabs);
+      };
+
+      const handleCloselink = () => {
+        setOpenlink(false)
+      };
+
+      const all_metrics = [["CPU operating frequency (in GHz)","2.973460","2.537907","3.458710","0.164359","No","","1"],["CPU utilization %","82.026706","21.590658","100.406860","22.087890","No","","1"],["CPU utilization % in kernel mode","25.104143","21.485538","29.824454","2.266433","Yes","Value exceeds metric threshold: [metric_CPU utilization % in kernel mode] \u003e 5.","1"],["CPI","1.915294","1.297986","3.987419","0.500764","No","","1"],["kernel_CPI","3.484443","2.804089","4.081135","0.351045","No","","1"],["IPC","0.551400","0.250789","0.770424","0.122641","No","","1"],["giga_instructions_per_sec","75.973915","10.487601","118.978350","26.225806","No","","1"],["branch misprediction ratio","0.023317","0.003220","0.028424","0.004505","No","","1"],["locks retired per instr","0.003917","0.000584","0.005486","0.002120","No","","1"],["L1D MPI (includes data+rfo w/ prefetches)","0.017483","0.014707","0.018081","0.000565","No","","1"],["L1D demand data read hits per instr","0.264490","0.251403","0.270995","0.006500","No","","1"],["L1-I code read misses (w/ prefetches) per instr","0.026498","0.024132","0.028710","0.001324","No","","1"],["L2 demand data read hits per instr","0.004256","0.003786","0.004904","0.000357","No","","1"],["L2 MPI (includes code+data+rfo w/ prefetches)","0.016541","0.013709","0.018527","0.001833","No","","1"],["L2 demand data read MPI","0.002683","0.002371","0.003084","0.000190","No","","1"],["L2 demand code MPI","0.005660","0.004212","0.006208","0.000407","No","","1"],["LLC code read MPI (demand+prefetch)","0.000043","0.000014","0.000142","0.000021","No","","1"],["LLC data read MPI (demand+prefetch)","0.002647","0.000853","0.008686","0.001283","No","","1"],["Average LLC demand data read miss latency (in ns)","36.335054","33.738224","39.288703","1.570875","No","","1"],["Average LLC demand data read miss latency for LOCAL requests (in ns)","27.764321","24.134465","29.833474","1.559192","No","","1"],["Average LLC demand data read miss latency for REMOTE requests (in ns)","NaN","NaN","NaN","NaN","No","","1"],["package power (watts)","174.583184","144.954600","188.725360","13.031133","No","","1"],["DRAM power (watts)","10.507551","8.240960","13.016347","1.308097","No","","1"],["core c6 residency %","8.251628","0.000000","29.689592","10.108351","No","","1"],["package c6 residency %","0.000000","0.000000","0.000000","0.000000","No","","1"],["% Uops delivered from decoded Icache (DSB)","53.888241","50.230628","63.375934","2.848308","No","","1"],["% Uops delivered from legacy decode pipeline (MITE)","42.884700","33.393133","45.701175","2.576818","No","","1"],["memory bandwidth read (MB/sec)","13475.071640","4969.541300","23301.882000","5012.644759","No","","1"],["memory bandwidth write (MB/sec)","5711.462143","2286.510500","10952.135000","2465.258387","No","","1"],["memory bandwidth total (MB/sec)","19186.533807","7396.795700","34254.018000","7450.379305","No","","1"],["ITLB (2nd level) MPI","0.000285","0.000230","0.000322","0.000023","No","","1"],["DTLB (2nd level) load MPI","0.001115","0.000875","0.001443","0.000187","No","","1"],["DTLB (2nd level) store MPI","0.000064","0.000046","0.000079","0.000009","No","","1"],["NUMA %_Reads addressed to local DRAM","100.000000","100.000000","100.000000","0.000000","No","","1"],["NUMA %_Reads addressed to remote DRAM","0.000000","0.000000","0.000000","0.000000","No","","1"],["uncore frequency GHz","6.459793","5.805549","7.167303","0.385423","No","","1"],["IO_bandwidth_disk_or_network_reads (MB/sec)","0.042975","0.024921","0.072407","0.010865","No","","1"],["IO_bandwidth_disk_or_network_writes (MB/sec)","0.156854","0.038245","0.664706","0.184770","No","","1"],["TMA_Frontend_Bound(%)","26.060258","16.067826","39.292431","6.883726","Yes","Issue: A significant portion of Pipeline Slots is remaining empty due to issues in the Front-End. Tip: Make sure the code working size is not too large, the code layout does not require too many memory accesses per cycle to get enough instructions for filling four pipeline slots, or check for microcode assists.","1"],["TMA_..Fetch_Latency(%)","18.544066","11.030602","28.641471","5.071919","Yes","Tip: See ICache_Misses and ITLB_Misses tips.","2"],["TMA_....ICache_Misses(%)","4.360228","2.801095","6.786877","1.251906","No","","3"],["TMA_....ITLB_Misses(%)","2.413985","0.383610","3.548145","0.645745","No","","3"],["TMA_....Branch_Resteers(%)","5.412944","3.450361","8.914761","1.814795","Yes","Issue: A significant fraction of cycles was stalled due to Branch Resteers. Branch Resteers estimate the Front-End delay in fetching operations from corrected path, following all sorts of mispredicted branches. For example, branchy code with lots of mispredictions might get categorized as Branch Resteers. Note the value of this node may overlap its siblings. ","3"],["TMA_....MS_Switches(%)","0.000000","0.000000","0.000000","0.000000","No","","3"],["TMA_....LCP(%)","0.028845","0.011641","0.120080","0.024611","No","","3"],["TMA_....DSB_Switches(%)","3.126468","2.260452","6.258174","0.754854","No","","3"],["TMA_..Fetch_Bandwidth(%)","7.516192","4.853607","11.268310","1.839613","No","","2"],["TMA_....MITE(%)","6.287271","0.512659","9.675606","1.860747","No","","3"],["TMA_....DSB(%)","3.454189","1.500433","5.374656","0.980241","No","","3"],["TMA_....MS(%)","0.620037","0.164357","0.757758","0.122034","No","","3"],["TMA_Bad_Speculation(%)","8.196205","4.548493","13.963826","2.801803","No","","1"],["TMA_..Branch_Mispredicts(%)","6.960701","0.866203","13.303456","2.888513","No","","2"],["TMA_....Other_Mispredicts(%)","3.755942","0.010000","7.172320","1.914609","No","","3"],["TMA_..Machine_Clears(%)","0.775938","0.449256","1.295058","0.186942","No","","2"],["TMA_....Other_Nukes(%)","0.779954","0.031332","1.147798","0.252075","No","","3"],["TMA_Backend_Bound(%)","50.089957","21.977167","92.039448","15.679027","Yes","Issue: A significant portion of pipeline slots are remaining empty. When operations take too long in the back-end, they introduce bubbles in the pipeline that ultimately cause fewer pipeline slots containing useful work to be retired per cycle than the machine is capable to support. This opportunity cost results in slower execution. Long-latency operations like divides and memory operations can cause this, as can too many operations being directed to a single execution port (for example, more multiply operations arriving in the back-end per cycle than the execution unit can support). ","1"],["TMA_..Memory_Bound(%)","45.934026","17.906362","87.695280","15.578812","Yes","Issue: The metric value is high. This can indicate that the significant fraction of execution pipeline slots could be stalled due to demand memory load and stores. Use Memory Access analysis to have the metric breakdown by memory hierarchy, memory bandwidth information, correlation by memory objects. ","2"],["TMA_....L1_Bound(%)","22.988315","11.224021","30.819462","7.815422","Yes","Issue: This metric estimates how often the CPU was stalled without loads missing the L1 Data (L1D) cache. The L1D cache typically has the shortest latency. However, in certain cases like loads blocked on older stores, a load might suffer due to high latency even though it is being satisfied by the L1D. Another example is loads who miss in the TLB. These cases are characterized by execution unit stalls, while some non-completed demand load live in the machine without having that demand load missing the L1 cache. ","3"],["TMA_......DTLB_Load(%)","7.406836","0.968540","11.559314","2.375751","No","","4"],["TMA_......Store_Fwd_Blk(%)","0.682161","0.038711","1.224606","0.455036","No","","4"],["TMA_......L1_Latency_Dependency(%)","5.538655","0.000000","7.868809","1.871392","No","","4"],["TMA_......Lock_Latency(%)","1.004202","0.063515","2.720614","0.639959","No","","4"],["TMA_......Split_Loads(%)","0.165938","0.011265","0.303410","0.083047","No","","4"],["TMA_......FB_Full(%)","0.566408","0.008423","1.107287","0.288167","No","","4"],["TMA_....L2_Bound(%)","1.402836","0.155279","2.092437","0.405213","No","","3"],["TMA_....L3_Bound(%)","34.650227","27.372335","74.574628","8.611591","Yes","Issue: This metric shows how often CPU was stalled on L3 cache, or contended with a sibling Core. Avoiding cache misses (L2 misses/L3 hits) improves the latency and increases performance. ","3"],["TMA_......Contested_Accesses(%)","18.340282","5.579817","34.936279","7.525089","Yes","Issue: Issues: There is a high number of contested accesses to cachelines modified by another core. Tips: Consider either using techniques suggested for other long latency load events (for example, LLC Miss) or reducing the contested accesses. To reduce contested accesses, first identify the cause. If it is a synchronization, try increasing synchronization granularity. If it is true data sharing, consider data privatization and reduction. If it is false data sharing, restructure the data to place contested variables into distinct cachelines. This may increase the working set due to padding, but false sharing can always be avoided. ","4"],["TMA_......Data_Sharing(%)","6.643800","4.263175","9.012147","1.173780","Yes","Issue: Significant data sharing by different cores is detected. ","4"],["TMA_......L3_Hit_Latency(%)","9.904101","2.092595","16.786210","3.589163","No","","4"],["TMA_......SQ_Full(%)","0.230897","0.009320","0.901317","0.228905","No","","4"],["TMA_....DRAM_Bound(%)","5.894334","0.002368","8.996095","1.707033","No","","3"],["TMA_......MEM_Bandwidth(%)","98.550111","56.503315","100.000000","7.807894","No","","4"],["TMA_......MEM_Latency(%)","-24.390820","-35.746840","0.000000","3.960118","No","","4"],["TMA_....Store_Bound(%)","1.198031","0.693758","1.580978","0.286426","No","","3"],["TMA_......Store_Latency(%)","39.347150","16.980238","63.202383","11.720398","No","","4"],["TMA_......False_Sharing(%)","31.559467","3.078225","44.835546","16.143630","No","","4"],["TMA_......Split_Stores(%)","0.083639","0.011369","0.160012","0.035794","No","","4"],["TMA_......Streaming_Stores(%)","0.000000","0.000000","0.000000","0.000000","No","","4"],["TMA_......DTLB_Store(%)","5.989649","0.197656","7.839460","2.311119","No","","4"],["TMA_..Core_Bound(%)","4.155931","3.513832","4.643731","0.233572","No","","2"],["TMA_....Divider(%)","0.063630","0.040017","0.108041","0.024139","No","","3"],["TMA_....Serializing_Operation(%)","1.162138","0.690594","2.081339","0.337322","No","","3"],["TMA_....AMX_Busy(%)","0.000000","0.000000","0.000000","0.000000","No","","3"],["TMA_....Ports_Utilization(%)","9.055734","3.150814","14.256546","2.957079","No","","3"],["TMA_Retiring(%)","17.280299","4.466168","24.748058","4.469486","No","","1"],["TMA_..Light_Operations(%)","15.408595","3.059319","22.833304","4.417253","No","","2"],["TMA_....FP_Arith(%)","0.001660","0.000024","0.003005","0.000746","No","","3"],["TMA_....Int_Operations(%)","0.004257","0.002733","0.010067","0.002041","No","","3"],["TMA_....Memory_Operations(%)","6.848866","0.714589","10.193537","2.436985","No","","3"],["TMA_....Fused_Instructions(%)","1.510141","0.243508","2.438416","0.520849","No","","3"],["TMA_....Non_Fused_Branches(%)","1.526633","0.312759","2.292179","0.447784","No","","3"],["TMA_....Other_Light_Ops(%)","4.997506","0.000000","11.124726","2.247721","No","","3"],["TMA_..Heavy_Operations(%)","1.871703","1.279799","2.215653","0.238756","No","","2"],["TMA_....Few_Uops_Instructions(%)","1.726937","1.203057","2.130546","0.281557","No","","3"],["TMA_....Microcode_Sequencer(%)","0.000000","0.000000","0.000000","0.000000","No","","3"]]
+      const [current_metrics, setCurrent_metrics] = React.useState(JSON.parse(JSON.stringify(all_metrics)));
+      const [hasHighlightedMetrics, setHasHighlightedMetrics] = React.useState(false);
+      const description = {"% Uops delivered from decoded Icache (DSB)":"Uops delivered from decoded instruction cache (decoded stream buffer or DSB) as a percent of total uops delivered to Instruction Decode Queue","% Uops delivered from legacy decode pipeline (MITE)":"Uops delivered from legacy decode pipeline (Micro-instruction Translation Engine or MITE) as a percent of total uops delivered to Instruction Decode Queue","Average LLC demand data read miss latency (in ns)":"Average latency of a last level cache (LLC) demand data read miss (read memory access) in nano seconds","Average LLC demand data read miss latency for LOCAL requests (in ns)":"Average latency of a last level cache (LLC) demand data read miss (read memory access) addressed to local memory in nano seconds","Average LLC demand data read miss latency for REMOTE requests (in ns)":"Average latency of a last level cache (LLC) demand data read miss (read memory access) addressed to remote memory in nano seconds","CPI":"Cycles per instruction retired; indicating how much time each executed instruction took; in units of cycles.","CPU operating frequency (in GHz)":"CPU operating frequency (in GHz)","CPU utilization %":"Percentage of time spent in the active CPU power state C0","CPU utilization % in kernel mode":"CPU utilization percentage in kernel mode","DRAM power (watts)":"DRAM power consumption in watts","DTLB (2nd level) load MPI":"Ratio of number of completed page walks (for all page sizes) caused by demand data loads to the total number of completed instructions. This implies it missed in the DTLB and further levels of TLB.","DTLB (2nd level) store MPI":"Ratio of number of completed page walks (for all page sizes) caused by demand data stores to the total number of completed instructions. This implies it missed in the DTLB and further levels of TLB.","IO_bandwidth_disk_or_network_reads (MB/sec)":"Bandwidth of IO writes that are initiated by end device controllers that are writing memory to the CPU.","IO_bandwidth_disk_or_network_writes (MB/sec)":"Bandwidth of IO reads that are initiated by end device controllers that are requesting memory from the CPU.","IPC":"Instructions per cycle","ITLB (2nd level) MPI":"Ratio of number of completed page walks (for all page sizes) caused by a code fetch to the total number of completed instructions. This implies it missed in the ITLB (Instruction TLB) and further levels of TLB.","L1-I code read misses (w/ prefetches) per instr":"Ratio of number of code read requests missing in L1 instruction cache (includes prefetches) to the total number of completed instructions","L1D MPI (includes data+rfo w/ prefetches)":"Ratio of number of requests missing L1 data cache (includes data+rfo w/ prefetches) to the total number of completed instructions","L1D demand data read hits per instr":"Ratio of number of demand load requests hitting in L1 data cache to the total number of completed instructions ","L2 MPI (includes code+data+rfo w/ prefetches)":"Ratio of number of requests missing L2 cache (includes code+data+rfo w/ prefetches) to the total number of completed instructions","L2 demand code MPI":"Ratio of number of code read request missing L2 cache to the total number of completed instructions","L2 demand data read MPI":"Ratio of number of completed data read request missing L2 cache to the total number of completed instructions","L2 demand data read hits per instr":"Ratio of number of completed demand load requests hitting in L2 cache to the total number of completed instructions ","LLC code read MPI (demand+prefetch)":"Ratio of number of code read requests missing last level core cache (includes demand w/ prefetches) to the total number of completed instructions","LLC data read MPI (demand+prefetch)":"Ratio of number of data read requests missing last level core cache (includes demand w/ prefetches) to the total number of completed instructions","NUMA %_Reads addressed to local DRAM":"Memory read that miss the last level cache (LLC) addressed to local DRAM as a percentage of total memory read accesses, does not include LLC prefetches.","NUMA %_Reads addressed to remote DRAM":"Memory reads that miss the last level cache (LLC) addressed to remote DRAM as a percentage of total memory read accesses, does not include LLC prefetches.","TMA_......Contested_Accesses(%)":"This metric estimates fraction of cycles while the memory subsystem was handling synchronizations due to contested accesses. Contested accesses occur when data written by one Logical Processor are read by another Logical Processor on a different Physical Core. Examples of contested accesses include synchronizations such as locks; true data sharing such as modified locked variables; and false sharing.","TMA_......DTLB_Load(%)":"This metric roughly estimates the fraction of cycles where the Data TLB (DTLB) was missed by load accesses. TLBs (Translation Look-aside Buffers) are processor caches for recently used entries out of the Page Tables that are used to map virtual- to physical-addresses by the operating system. This metric approximates the potential delay of demand loads missing the first-level data TLB (assuming worst case scenario with back to back misses to different pages). This includes hitting in the second-level TLB (STLB) as well as performing a hardware page walk on an STLB miss.","TMA_......DTLB_Store(%)":"This metric roughly estimates the fraction of cycles spent handling first-level data TLB store misses.  As with ordinary data caching; focus on improving data locality and reducing working-set size to reduce DTLB overhead.  Additionally; consider using profile-guided optimization (PGO) to collocate frequently-used data on the same page.  Try using larger page sizes for large amounts of frequently-used data.","TMA_......Data_Sharing(%)":"This metric estimates fraction of cycles while the memory subsystem was handling synchronizations due to data-sharing accesses. Data shared by multiple Logical Processors (even just read shared) may cause increased access latency due to cache coherency. Excessive data sharing can drastically harm multithreaded performance.","TMA_......FB_Full(%)":"This metric does a *rough estimation* of how often L1D Fill Buffer unavailability limited additional L1D miss memory access requests to proceed. The higher the metric value; the deeper the memory hierarchy level the misses are satisfied from (metric values \u003e1 are valid). Often it hints on approaching bandwidth limits (to L2 cache; L3 cache or external memory).","TMA_......False_Sharing(%)":"This metric roughly estimates how often CPU was handling synchronizations due to False Sharing. False Sharing is a multithreading hiccup; where multiple Logical Processors contend on different data-elements mapped into the same cache line.","TMA_......L1_Latency_Dependency(%)":"This metric ([SKL+] roughly; [LNL]) estimates fraction of cycles with demand load accesses that hit the L1D cache. The short latency of the L1D cache may be exposed in pointer-chasing memory access patterns as an example.","TMA_......L3_Hit_Latency(%)":"This metric estimates fraction of cycles with demand load accesses that hit the L3 cache under unloaded scenarios (possibly L3 latency limited).  Avoiding private cache misses (i.e. L2 misses/L3 hits) will improve the latency; reduce contention with sibling physical cores and increase performance.  Note the value of this node may overlap with its siblings.","TMA_......Lock_Latency(%)":"This metric represents fraction of cycles the CPU spent handling cache misses due to lock operations. Due to the microarchitecture handling of locks; they are classified as L1_Bound regardless of what memory source satisfied them.","TMA_......MEM_Bandwidth(%)":"This metric estimates fraction of cycles where the core's performance was likely hurt due to approaching bandwidth limits of external memory - DRAM ([SPR-HBM] and/or HBM).  The underlying heuristic assumes that a similar off-core traffic is generated by all IA cores. This metric does not aggregate non-data-read requests by this logical processor; requests from other IA Logical Processors/Physical Cores/sockets; or other non-IA devices like GPU; hence the maximum external memory bandwidth limits may or may not be approached when this metric is flagged (see Uncore counters for that).","TMA_......MEM_Latency(%)":"This metric estimates fraction of cycles where the performance was likely hurt due to latency from external memory - DRAM ([SPR-HBM] and/or HBM).  This metric does not aggregate requests from other Logical Processors/Physical Cores/sockets (see Uncore counters for that).","TMA_......SQ_Full(%)":"This metric measures fraction of cycles where the Super Queue (SQ) was full taking into account all request-types and both hardware SMT threads (Logical Processors).","TMA_......Split_Loads(%)":"This metric estimates fraction of cycles handling memory load split accesses - load that cross 64-byte cache line boundary.","TMA_......Split_Stores(%)":"This metric represents rate of split store accesses.  Consider aligning your data to the 64-byte cache line granularity.","TMA_......Store_Fwd_Blk(%)":"This metric roughly estimates fraction of cycles when the memory subsystem had loads blocked since they could not forward data from earlier (in program order) overlapping stores. To streamline memory operations in the pipeline; a load can avoid waiting for memory if a prior in-flight store is writing the data that the load wants to read (store forwarding process). However; in some cases the load may be blocked for a significant time pending the store forward. For example; when the prior store is writing a smaller region than the load is reading.","TMA_......Store_Latency(%)":"This metric estimates fraction of cycles the CPU spent handling L1D store misses. Store accesses usually less impact out-of-order core performance; however; holding resources for longer time can lead into undesired implications (e.g. contention on L1D fill-buffer entries - see FB_Full)","TMA_......Streaming_Stores(%)":"This metric estimates how often CPU was stalled  due to Streaming store memory accesses; Streaming store optimize out a read request required by RFO stores. Even though store accesses do not typically stall out-of-order CPUs; there are few cases where stores can lead to actual stalls. This metric will be flagged should Streaming stores be a bottleneck.","TMA_....AMX_Busy(%)":"This metric estimates fraction of cycles where the Advanced Matrix eXtensions (AMX) execution engine was busy with tile (arithmetic) operations","TMA_....Branch_Resteers(%)":"This metric represents fraction of cycles the CPU was stalled due to Branch Resteers. Branch Resteers estimates the Frontend delay in fetching operations from corrected path; following all sorts of miss-predicted branches. For example; branchy code with lots of miss-predictions might get categorized under Branch Resteers. Note the value of this node may overlap with its siblings.","TMA_....DRAM_Bound(%)":"This metric estimates how often the CPU was stalled on accesses to external memory (DRAM) by loads. Better caching can improve the latency and increase performance.","TMA_....DSB(%)":"This metric represents Core fraction of cycles in which CPU was likely limited due to DSB (decoded uop cache) fetch pipeline.  For example; inefficient utilization of the DSB cache structure or bank conflict when reading from it; are categorized here.","TMA_....DSB_Switches(%)":"This metric represents fraction of cycles the CPU was stalled due to switches from DSB to MITE pipelines. The DSB (decoded i-cache) is a Uop Cache where the front-end directly delivers Uops (micro operations) avoiding heavy x86 decoding. The DSB pipeline has shorter latency and delivered higher bandwidth than the MITE (legacy instruction decode pipeline). Switching between the two pipelines can cause penalties hence this metric measures the exposed penalty.","TMA_....Divider(%)":"This metric represents fraction of cycles where the Divider unit was active. Divide and square root instructions are performed by the Divider unit and can take considerably longer latency than integer or Floating Point addition; subtraction; or multiplication.","TMA_....FP_Arith(%)":"This metric represents overall arithmetic floating-point (FP) operations fraction the CPU has executed (retired). Note this metric's value may exceed its parent due to use of \"Uops\" CountDomain and FMA double-counting.","TMA_....Few_Uops_Instructions(%)":"This metric represents fraction of slots where the CPU was retiring instructions that that are decoder into two or more uops. This highly-correlates with the number of uops in such instructions.","TMA_....Fused_Instructions(%)":"This metric represents fraction of slots where the CPU was retiring fused instructions , where one uop can represent multiple contiguous instructions. CMP+JCC or DEC+JCC are common examples of legacy fusions. {([MTL] Note new MOV+OP and Load+OP fusions appear under Other_Light_Ops in MTL!)}","TMA_....ICache_Misses(%)":"This metric represents fraction of cycles the CPU was stalled due to instruction cache misses.","TMA_....ITLB_Misses(%)":"This metric represents fraction of cycles the CPU was stalled due to Instruction TLB (ITLB) misses.","TMA_....Int_Operations(%)":"This metric represents overall Integer (Int) select operations fraction the CPU has executed (retired). Vector/Matrix Int operations and shuffles are counted. Note this metric's value may exceed its parent due to use of \"Uops\" CountDomain.","TMA_....L1_Bound(%)":"This metric estimates how often the CPU was stalled without loads missing the L1 Data (L1D) cache.  The L1D cache typically has the shortest latency.  However; in certain cases like loads blocked on older stores; a load might suffer due to high latency even though it is being satisfied by the L1D. Another example is loads who miss in the TLB. These cases are characterized by execution unit stalls; while some non-completed demand load lives in the machine without having that demand load missing the L1 cache.","TMA_....L2_Bound(%)":"This metric estimates how often the CPU was stalled due to L2 cache accesses by loads.  Avoiding cache misses (i.e. L1 misses/L2 hits) can improve the latency and increase performance.","TMA_....L3_Bound(%)":"This metric estimates how often the CPU was stalled due to loads accesses to L3 cache or contended with a sibling Core.  Avoiding cache misses (i.e. L2 misses/L3 hits) can improve the latency and increase performance.","TMA_....LCP(%)":"This metric represents fraction of cycles CPU was stalled due to Length Changing Prefixes (LCPs). Using proper compiler flags or Intel Compiler by default will certainly avoid this.","TMA_....MITE(%)":"This metric represents Core fraction of cycles in which CPU was likely limited due to the MITE pipeline (the legacy decode pipeline). This pipeline is used for code that was not pre-cached in the DSB or LSD. For example; inefficiencies due to asymmetric decoders; use of long immediate or LCP can manifest as MITE fetch bandwidth bottleneck.","TMA_....MS(%)":"This metric represents Core fraction of cycles in which CPU was likely limited due to the Microcode Sequencer (MS) unit - see Microcode_Sequencer node for details.","TMA_....MS_Switches(%)":"This metric estimates the fraction of cycles when the CPU was stalled due to switches of uop delivery to the Microcode Sequencer (MS). Commonly used instructions are optimized for delivery by the DSB (decoded i-cache) or MITE (legacy instruction decode) pipelines. Certain operations cannot be handled natively by the execution pipeline; and must be performed by microcode (small programs injected into the execution stream). Switching to the MS too often can negatively impact performance. The MS is designated to deliver long uop flows required by CISC instructions like CPUID; or uncommon conditions like Floating Point Assists when dealing with Denormals.","TMA_....Memory_Operations(%)":"This metric represents fraction of slots where the CPU was retiring memory operations , uops for memory load or store accesses.","TMA_....Microcode_Sequencer(%)":"This metric represents fraction of slots the CPU was retiring uops fetched by the Microcode Sequencer (MS) unit.  The MS is used for CISC instructions not supported by the default decoders (like repeat move strings; or CPUID); or by microcode assists used to address some operation modes (like in Floating Point assists). These cases can often be avoided.","TMA_....Non_Fused_Branches(%)":"This metric represents fraction of slots where the CPU was retiring branch instructions that were not fused. Non-conditional branches like direct JMP or CALL would count here. Can be used to examine fusible conditional jumps that were not fused.","TMA_....Other_Light_Ops(%)":"This metric represents the remaining light uops fraction the CPU has executed - remaining means not covered by other sibling nodes. May undercount due to FMA double counting","TMA_....Other_Mispredicts(%)":"This metric estimates fraction of slots the CPU was stalled due to other cases of misprediction (non-retired x86 branches or other types).","TMA_....Other_Nukes(%)":"This metric represents fraction of slots the CPU has wasted due to Nukes (Machine Clears) not related to memory ordering.","TMA_....Ports_Utilization(%)":"This metric estimates fraction of cycles the CPU performance was potentially limited due to Core computation issues (non divider-related).  Two distinct categories can be attributed into this metric: (1) heavy data-dependency among contiguous instructions would manifest in this metric - such cases are often referred to as low Instruction Level Parallelism (ILP). (2) Contention on some hardware execution unit other than Divider. For example; when there are too many multiply operations.","TMA_....Serializing_Operation(%)":"This metric represents fraction of cycles the CPU issue-pipeline was stalled due to serializing operations. Instructions like CPUID; WRMSR or LFENCE serialize the out-of-order execution which may limit performance.","TMA_....Store_Bound(%)":"This metric estimates how often CPU was stalled  due to RFO store memory accesses; RFO store issue a read-for-ownership request before the write. Even though store accesses do not typically stall out-of-order CPUs; there are few cases where stores can lead to actual stalls. This metric will be flagged should RFO stores be a bottleneck.","TMA_..Branch_Mispredicts(%)":"This metric represents fraction of slots the CPU has wasted due to Branch Misprediction.  These slots are either wasted by uops fetched from an incorrectly speculated program path; or stalls when the out-of-order part of the machine needs to recover its state from a speculative path.","TMA_..Core_Bound(%)":"This metric represents fraction of slots where Core non-memory issues were of a bottleneck.  Shortage in hardware compute resources; or dependencies in software's instructions are both categorized under Core Bound. Hence it may indicate the machine ran out of an out-of-order resource; certain execution units are overloaded or dependencies in program's data- or instruction-flow are limiting the performance (e.g. FP-chained long-latency arithmetic operations).","TMA_..Fetch_Bandwidth(%)":"This metric represents fraction of slots the CPU was stalled due to Frontend bandwidth issues.  For example; inefficiencies at the instruction decoders; or restrictions for caching in the DSB (decoded uops cache) are categorized under Fetch Bandwidth. In such cases; the Frontend typically delivers suboptimal amount of uops to the Backend.","TMA_..Fetch_Latency(%)":"This metric represents fraction of slots the CPU was stalled due to Frontend latency issues.  For example; instruction-cache misses; iTLB misses or fetch stalls after a branch misprediction are categorized under Frontend Latency. In such cases; the Frontend eventually delivers no uops for some period.","TMA_..Heavy_Operations(%)":"This metric represents fraction of slots where the CPU was retiring heavy-weight operations , instructions that require two or more uops or micro-coded sequences. This highly-correlates with the uop length of these instructions/sequences.([ICL+] Note this may overcount due to approximation using indirect events; [ADL+])","TMA_..Light_Operations(%)":"This metric represents fraction of slots where the CPU was retiring light-weight operations , instructions that require no more than one uop (micro-operation). This correlates with total number of instructions used by the program. A uops-per-instruction (see UopPI metric) ratio of 1 or less should be expected for decently optimized code running on Intel Core/Xeon products. While this often indicates efficient X86 instructions were executed; high value does not necessarily mean better performance cannot be achieved. ([ICL+] Note this may undercount due to approximation using indirect events; [ADL+] .)","TMA_..Machine_Clears(%)":"This metric represents fraction of slots the CPU has wasted due to Machine Clears.  These slots are either wasted by uops fetched prior to the clear; or stalls the out-of-order portion of the machine needs to recover its state after the clear. For example; this can happen due to memory ordering Nukes (e.g. Memory Disambiguation) or Self-Modifying-Code (SMC) nukes.","TMA_..Memory_Bound(%)":"This metric represents fraction of slots the Memory subsystem within the Backend was a bottleneck.  Memory Bound estimates fraction of slots where pipeline is likely stalled due to demand load or store instructions. This accounts mainly for (1) non-completed in-flight memory demand loads which coincides with execution units starvation; in addition to (2) cases where stores could impose backpressure on the pipeline when many of them get buffered at the same time (less common out of the two).","TMA_Backend_Bound(%)":"This category represents fraction of slots where no uops are being delivered due to a lack of required resources for accepting new uops in the Backend. Backend is the portion of the processor core where the out-of-order scheduler dispatches ready uops into their respective execution units; and once completed these uops get retired according to program order. For example; stalls due to data-cache misses or stalls due to the divider unit being overloaded are both categorized under Backend Bound. Backend Bound is further divided into two main categories: Memory Bound and Core Bound.","TMA_Bad_Speculation(%)":"This category represents fraction of slots wasted due to incorrect speculations. This include slots used to issue uops that do not eventually get retired and slots for which the issue-pipeline was blocked due to recovery from earlier incorrect speculation. For example; wasted work due to miss-predicted branches are categorized under Bad Speculation category. Incorrect data speculation followed by Memory Ordering Nukes is another example.","TMA_Frontend_Bound(%)":"This category represents fraction of slots where the processor's Frontend undersupplies its Backend. Frontend denotes the first part of the processor core responsible to fetch operations that are executed later on by the Backend part. Within the Frontend; a branch predictor predicts the next address to fetch; cache-lines are fetched from the memory subsystem; parsed into instructions; and lastly decoded into micro-operations (uops). Ideally the Frontend can issue Pipeline_Width uops every cycle to the Backend. Frontend Bound denotes unutilized issue-slots when there is no Backend stall; i.e. bubbles where Frontend delivered no uops while Backend could have accepted them. For example; stalls due to instruction-cache misses would be categorized under Frontend Bound.","TMA_Retiring(%)":"This category represents fraction of slots utilized by useful work i.e. issued uops that eventually get retired. Ideally; all pipeline slots would be attributed to the Retiring category.  Retiring of 100% would indicate the maximum Pipeline_Width throughput was achieved.  Maximizing Retiring typically increases the Instructions-per-cycle (see IPC metric). Note that a high Retiring value does not necessary mean there is no room for more performance.  For example; Heavy-operations or Microcode Assists are categorized under Retiring. They often indicate suboptimal performance and can often be optimized or avoided.","branch misprediction ratio":"Ratio of branch mispredictions to the total number of branches retired.","core c6 residency %":"Core C6 state residency percentage","giga_instructions_per_sec":"Billions of instructions per second","kernel_CPI":"Kernel cycles per instruction","locks retired per instr":"Locks retired per instruction","memory bandwidth read (MB/sec)":"DDR memory read bandwidth (MB/sec)","memory bandwidth total (MB/sec)":"DDR memory bandwidth (MB/sec)","memory bandwidth write (MB/sec)":"DDR memory write bandwidth (MB/sec)","package c6 residency %":"Package C6 state residency percentage","package power (watts)":"Package power consumption in watts","uncore frequency GHz":"Uncore operating frequency in GHz"}
+      const metadata = {"NumGeneralPurposeCounters":8,"SocketCount":1,"CoresPerSocket":28,"ThreadsPerCore":2,"CPUSocketMap":{"0":0,"1":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0,"2":0,"20":0,"21":0,"22":0,"23":0,"24":0,"25":0,"26":0,"27":0,"28":0,"29":0,"3":0,"30":0,"31":0,"32":0,"33":0,"34":0,"35":0,"36":0,"37":0,"38":0,"39":0,"4":0,"40":0,"41":0,"42":0,"43":0,"44":0,"45":0,"46":0,"47":0,"48":0,"49":0,"5":0,"50":0,"51":0,"52":0,"53":0,"54":0,"55":0,"6":0,"7":0,"8":0,"9":0},"KernelVersion":"6.8.0-85-generic","Architecture":"x86_64","Vendor":"GenuineIntel","Microarchitecture":"EMR","Hostname":"node0.c6620.alanfaascache-pg0.utah.cloudlab.us","ModelName":"INTEL(R) XEON(R) GOLD 5512U","SupportsInstructions":true,"PMUDriverVersion":"5","UncoreDeviceIDs":{"cha":[1,24,14,22,12,8,20,10,6,19,4,27,17,2,25,15,0,23,13,9,21,11,7,5,18,3,26,16],"iio":[8,6,2,0,7,3,1],"iio_free_running":[7,5,3,1,8,6,4,2,0],"imc":[5,3,1,6,4,2,0,7],"imc_free_running":[1,2,0,3],"irp":[3,1,8,6,2,0,7],"m2m":[3,1,2,0],"m2pcie":[8,6,2,0,7,3,1],"m3upi":[0,1,2]},"SupportsFixedCycles":true,"SupportsFixedInstructions":true,"SupportsFixedTMA":true,"SupportsFixedRefCycles":true,"SupportsRefCycles":true,"SupportsUncore":true,"SupportsPEBS":true,"SupportsOCR":true,"TSC":117600000000,"TSCFrequencyHz":2100000000,"ARMSlots":0,"ARMCPUID":"","CollectionStartTime":"2025-10-29T04:44:19.176564779-06:00","PerfSpectVersion":"3.11.0_2025-10-12_c0650037"}
+      const system_info = [["Host Name","node0.c6620.alanfaascache-pg0.utah.cloudlab.us"],["Time","Wed Oct 29 04:44:15 MDT 2025"],["CPU Model","INTEL(R) XEON(R) GOLD 5512U"],["Microarchitecture","EMR_MCC"],["TDP","185W"],["Sockets","1"],["Cores per Socket","28"],["Hyperthreading","Enabled"],["CPUs","56"],["NUMA Nodes","1"],["Scaling Driver","intel_pstate"],["Scaling Governor","performance"],["C-states","POLL: Enabled, C1: Enabled, C1E: Enabled, C6: Enabled"],["Maximum Frequency","3.7GHz"],["All-core Maximum Frequency","3.0GHz"],["Energy Performance Bias","Balanced Performance (6)"],["Efficiency Latency Control",""],["MemTotal","131393092 kB"],["NIC","2x Ethernet Controller E810-XXV for SFP, 2x Ethernet Controller E810-C for QSFP"],["Disk","2x 745.2G Dell DC NVMe ISE 7450 MU U.2 800GB"],["OS","Ubuntu 22.04.5 LTS"],["Kernel","6.8.0-85-generic"]]
+      
+      // Check for highlighted metrics whenever current_metrics changes
+      React.useEffect(() => {
+        // Look for any metrics that exceed their thresholds
+        const hasHighlighted = current_metrics.some(row => row[5] === "Yes");
+        setHasHighlightedMetrics(hasHighlighted);
+      }, [current_metrics]);
+
+      // MetricsTable component
+      const MetricsTable = ({ 
+        data, 
+        filterPrefix = null, 
+        showComparison = false, 
+        containerStyle = {}
+      }) => {
+        const filteredData = filterPrefix 
+          ? data.filter((row) => {
+              // filterPrefix is either null or an array of strings
+              return filterPrefix.some(prefix => row[0].startsWith(prefix));
+            })
+          : data;
+
+        const hasOtherComparison = data.length > 0 && data[0].hasOwnProperty("other");
+
+        // If filtering results in no data, show a message
+        if (filterPrefix && filteredData.length === 0) {
+          return (
+            <div style={containerStyle}>
+              <Typography variant="body1" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
+                No additional TMA metrics collected.
+              </Typography>
+            </div>
+          );
+        }
+        // Create the table
+        return (
+          <div style={containerStyle}>
+            {hasHighlightedMetrics && (
+              <Box sx={{ marginTop: "0px" }}>
+                <Alert 
+                  severity="warning" 
+                  sx={{ 
+                    marginBottom: "0px",
+                    backgroundColor: 'rgba(255, 255, 0, 0.2)',
+                    '& .MuiAlert-icon': {
+                      color: 'rgba(0, 0, 0, 0.7)'
+                    },
+                    '& .MuiAlert-message': {
+                      color: 'rgba(0, 0, 0, 0.7)'
+                    }
+                  }}
+                >
+                  {"Metrics with a mean value exceeding their threshold formula are highlighted in yellow, indicating potential performance issues or anomalies that may require further investigation. Hover over the warning icon next to the mean value for more information."}
+                </Alert>
+              </Box>
+            )}
+            <TableContainer component={Paper} sx={{ width: "fit-content" }}>
+              <Table size="small" style={{ tableLayout: 'auto' }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Metric</TableCell>
+                    <TableCell>Mean</TableCell>
+                    <TableCell>Min</TableCell>
+                    <TableCell>Max</TableCell>
+                    <TableCell>Stddev</TableCell>
+                    {showComparison && hasOtherComparison && <TableCell sx={{ fontStyle: 'italic' }}>Other Mean</TableCell>}
+                    {showComparison && hasOtherComparison && <TableCell>Diff</TableCell>}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredData.map((row) => {
+                    const exceedsThreshold = row[5] == "Yes";
+                    return (
+                      <TableRow
+                        hover={true}
+                        key={row[0]}
+                        sx={{ 
+                          '&:last-child td, &:last-child th': { border: 0 },
+                          backgroundColor: exceedsThreshold ? 'rgba(255, 255, 0, 0.2)' : 'inherit'
+                        }}
+                      >
+                        <TableCell sx={{ fontFamily: 'Monospace' }} component="th" scope="row">
+                          <Tooltip 
+                            title={description.hasOwnProperty(row[0]) ? description[row[0]] : ""} 
+                            componentsProps={{
+                              tooltip: {
+                                sx: {
+                                  fontSize: '1.0rem',
+                                  padding: '8px 12px',
+                                  bgcolor: 'rgba(97, 97, 97, 0.92)',
+                                  color: '#ffffff',
+                                  fontWeight: 400,
+                                  boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.2)'
+                                }
+                              }
+                            }}
+                          >
+                            <IconButton sx={{ padding: "0 8px 0 0" }} disabled={!description.hasOwnProperty(row[0])}>
+                              <Icon>info</Icon>
+                            </IconButton>
+                          </Tooltip>
+                          {(() => {
+                            const level = row[7] ? Number(row[7]) : 1;
+                            const indentationLevel = level > 1 ? level - 1 : 0;
+                            
+                            const indentation = indentationLevel > 0 ? 
+                              <span style={{
+                                paddingLeft: `${indentationLevel * 16}px`,
+                                borderLeft: indentationLevel > 0 ? '1px dotted #aaa' : 'none',
+                                marginLeft: indentationLevel > 0 ? '4px' : '0',
+                              }}>
+                                {indentationLevel > 0 && <Icon 
+                                  sx={{ 
+                                    fontSize: '0.8rem', 
+                                    verticalAlign: 'middle',
+                                    color: '#666',
+                                    marginRight: '4px'
+                                  }}
+                                >
+                                  subdirectory_arrow_right
+                                </Icon>}
+                              </span> : null;
+                            
+                            return (
+                              <React.Fragment>
+                                {indentation}
+                                {row[0]}
+                              </React.Fragment>
+                            );
+                          })()}
+                        </TableCell>
+                        <TableCell 
+                          sx={{ 
+                            fontFamily: 'Monospace', 
+                            fontWeight: exceedsThreshold ? 'bold' : 'normal',
+                            backgroundColor: exceedsThreshold ? 'rgba(255, 235, 59, 0.4)' : 'inherit'
+                          }} 
+                          align="right"
+                        >
+                          {Number(row[1]).toFixed(4)}
+                          {exceedsThreshold && 
+                            <Tooltip 
+                              title={`${row[6]}`}
+                              componentsProps={{
+                                tooltip: {
+                                  sx: {
+                                    fontSize: '1.0rem',
+                                    padding: '8px 12px',
+                                    bgcolor: 'rgba(255, 235, 59, 0.9)',
+                                    color: '#222222',
+                                    fontWeight: 400
+                                  }
+                                }
+                              }}
+                            >
+                              <IconButton size="small" sx={{ padding: "0 0 0 4px" }}>
+                                <Icon fontSize="small">warning</Icon>
+                              </IconButton>
+                            </Tooltip>
+                          }
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: 'Monospace' }} align="right">
+                          {Number(row[2]).toFixed(4)}
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: 'Monospace' }} align="right">
+                          {Number(row[3]).toFixed(4)}
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: 'Monospace' }} align="right">
+                          {Number(row[4]).toFixed(4)}
+                        </TableCell>
+                        {showComparison && hasOtherComparison && row.hasOwnProperty("other") && (
+                          <TableCell sx={{ fontFamily: 'Monospace', fontStyle: 'italic' }} align="right">
+                            {Number(row["other"]).toFixed(4)}
+                          </TableCell>
+                        )}
+                        {showComparison && hasOtherComparison && row.hasOwnProperty("other") && (
+                          <TableCell align="right" sx={{ 
+                            fontFamily: 'Monospace', 
+                            backgroundColor: (row.diff > 0 ? "rgba(255,0,0," + (row.diff / maxdiff * .5) + ")" : "rgba(0,0,255," + (row.diff / mindiff * .5) + ")") 
+                          }}>
+                            {Math.round(Number(row["diff"]))}%
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </div>
+        );
+      };
+      // Define consistent colors for TMA categories with child variations
+      const tmaColors = {
+        // Blue family for Frontend
+        'Frontend': '#4472c4',
+        'FrontendChild': '#7293d3',  // Lighter blue for all Frontend children
+        
+        // Green family for Retiring
+        'Retiring': '#70ad47',
+        'RetiringChild': '#9bc56e',   // Lighter green for all Retiring children
+        
+        // Orange family for BadSpeculation
+        'BadSpeculation': '#ff8c42',
+        'BadSpeculationChild': '#ffab73', // Lighter orange for all BadSpeculation children
+        
+        // Teal family for Backend
+        'Backend': '#2e8b8b',
+        'BackendChild': '#5ba3a3'    // Lighter teal for all Backend children
+      };
+      
+      let tmasunburst = {
+          tooltip: {},
+          color: [tmaColors.Frontend, tmaColors.BadSpeculation, tmaColors.Backend, tmaColors.Retiring],
+          series: {
+            nodeClick: false,
+            type: "sunburst",
+            radius: [60, "90%"],
+            itemStyle: {
+              borderRadius: 7,
+              borderWidth: 2,
+            },
+            data: [
+              {
+                name: "Frontend",
+                value: Math.round(26.060258 * 10) / 10,
+                itemStyle: { color: tmaColors.Frontend },
+                children: [
+                  {
+                    name: "Fetch BW",
+                    value: Math.round(7.516192 * 10) / 10,
+                    itemStyle: { color: tmaColors.FrontendChild }
+                  },
+                  {
+                    name: "Fetch Latency",
+                    value: Math.round(18.544066 * 10) / 10,
+                    itemStyle: { color: tmaColors.FrontendChild }
+                  },
+                ]
+              },
+              {
+                name: "Bad Speculation",
+                value: Math.round(8.196205 * 10) / 10,
+                itemStyle: { color: tmaColors.BadSpeculation },
+                children: [
+                  {
+                    name: "Mispredicts",
+                    value: Math.round(6.960701 * 10) / 10,
+                    itemStyle: { color: tmaColors.BadSpeculationChild }
+                  },
+                  {
+                    name: "Machine Clears",
+                    value: Math.round(0.775938 * 10) / 10,
+                    itemStyle: { color: tmaColors.BadSpeculationChild }
+                  },
+                ]
+              },
+              {
+                name: "Backend",
+                value: Math.round(50.089957 * 10) / 10,
+                itemStyle: { color: tmaColors.Backend },
+                children: [
+                  {
+                    name: "Core",
+                    value: Math.round(4.155931 * 10) / 10,
+                    itemStyle: { color: tmaColors.BackendChild }
+                  },
+                  {
+                    name: "Memory",
+                    value: Math.round(45.934026 * 10) / 10,
+                    itemStyle: { color: tmaColors.BackendChild }
+                  },
+                ],
+              },
+              {
+                name: "Retiring",
+                value: Math.round(17.280299 * 10) / 10,
+                itemStyle: { color: tmaColors.Retiring },
+                children: [
+                  {
+                    name: "Light Ops",
+                    value: Math.round(15.408595 * 10) / 10,
+                    itemStyle: { color: tmaColors.RetiringChild }
+                  },
+                  {
+                    name: "Heavy Ops",
+                    value: Math.round(1.871703 * 10) / 10,
+                    itemStyle: { color: tmaColors.RetiringChild }
+                  },
+                ]
+              },
+            ],
+            radius: [20, "100%"],
+            label: {
+              rotate: "radial",
+            },
+          },
+        }
+      // the common config for all line charts
+      const base_line = {
+        xAxis: {
+          type: "category",
+          data: ["04:44:24","04:44:29","04:44:34","04:44:39","04:44:44","04:44:49","04:44:54","04:44:59","04:45:04","04:45:09","04:45:14","04:45:19","04:45:24","04:45:29","04:45:34","04:45:39","04:45:44","04:45:49","04:45:54","04:45:59","04:46:04","04:46:10","04:46:15","04:46:20","04:46:25","04:46:30","04:46:35","04:46:40","04:46:45","04:46:49"],
+          min: "dataMin",
+          max: "dataMax",
+          boundaryGap: false, // ensure the chart starts at the first data point
+          axisLabel: {
+            rotate: 45,
+          }
+        },
+        yAxis: {},
+        tooltip: {
+          trigger: 'axis',
+          valueFormatter: (value) => value.toFixed(2),
+        },
+        legend: {
+          orient: 'horizontal',
+          top: 20,
+          left: 'center',
+          show: true,
+          selectedMode: false, // Prevents toggling series visibility by clicking on legend
+        },
+      }
+
+      let level1tma = {
+        ...base_line,
+        grid: {
+          left: 50,  // Reduce left margin
+        },
+        color: [tmaColors.Frontend, tmaColors.Backend, tmaColors.Retiring, tmaColors.BadSpeculation],
+        series: [
+          {
+            name: "Frontend",
+            type: 'line',
+            data: [[0,24.463506],[1,24.049706],[2,24.322035],[3,24.515557],[4,23.43237],[5,17.139464],[6,20.674679],[7,24.934685],[8,16.067826],[9,24.598782],[10,16.645704],[11,26.230856],[12,24.425238],[13,16.686759],[14,26.013195],[15,24.894753],[16,18.443866],[17,24.795064],[18,17.11167],[19,26.063399],[20,33.341219],[21,27.501743],[22,39.292431],[23,28.332165],[24,38.469005],[25,38.335018],[26,25.443764],[27,38.931848],[28,38.755326],[29,27.896119]],
+          },
+          {
+            name: "Backend",
+            type: 'line',
+            data: [[0,51.284506],[1,50.230331],[2,50.707844],[3,51.273608],[4,51.513733],[5,65.123988],[6,64.433981],[7,51.504468],[8,92.039448],[9,50.805919],[10,64.349889],[11,62.036945],[12,51.679832],[13,63.645744],[14,57.150629],[15,50.876631],[16,69.657098],[17,51.192536],[18,65.056164],[19,45.475663],[20,34.571912],[21,46.095541],[22,21.977167],[23,46.459073],[24,23.038201],[25,23.952533],[26,53.855269],[27,22.792702],[28,23.318619],[29,46.598736]],
+          },
+          {
+            name: "Retiring",
+            type: 'line',
+            data: [[0,17.838729],[1,17.889194],[2,17.403989],[3,17.387616],[4,17.190853],[5,12.676681],[6,12.910298],[7,17.116483],[8,4.4661679],[9,17.39932],[10,13.454055],[11,13.95001],[12,18.110163],[13,13.521775],[14,15.34092],[15,17.41792],[16,11.37182],[17,17.635589],[18,12.770932],[19,20.364048],[20,21.691844],[21,17.204827],[22,24.67348],[23,17.70317],[24,24.748058],[25,24.735331],[26,15.721284],[27,24.268353],[28,24.202513],[29,17.243535]],
+          },
+          {
+            name: "Bad Speculation",
+            type: 'line',
+            data: [[0,7.4666416],[1,6.9882714],[2,7.1449025],[3,7.1955401],[4,7.0270814],[5,5.148256],[6,6.1804796],[7,7.2280758],[8,4.5484933],[9,7.1080436],[10,4.8313015],[11,7.1875047],[12,7.1103482],[13,4.837819],[14,7.4948764],[15,7.022224],[16,5.4182592],[17,7.2661875],[18,5.1793245],[19,7.8295671],[20,10.001592],[21,9.1205931],[22,13.373615],[23,9.7402516],[24,13.963826],[25,13.536969],[26,9.3607461],[27,13.769846],[28,13.487663],[29,9.3178537]],
+          },
+        ]
+      }
+
+      let cpu_util = {
+        ...base_line,
+        series: [
+          {
+            name: "CPU Utilization %",
+            type: 'line',
+            data: [[0,100.40686],[1,100.03529],[2,99.872682],[3,99.995505],[4,99.933485],[5,60.716641],[6,61.200108],[7,99.5755],[8,21.590658],[9,99.987902],[10,60.715436],[11,71.178299],[12,99.700947],[13,59.957242],[14,84.365356],[15,99.88648],[16,52.976755],[17,99.971014],[18,60.696603],[19,100.00736],[20,99.62572],[21,60.357208],[22,99.386873],[23,60.340119],[24,99.06583],[25,99.403286],[26,50.809213],[27,99.289389],[28,99.57706],[29,60.176358]],
+          }
+        ]
+      }
+
+      let kernel_util = {
+        ...base_line,
+        series: [
+          {
+            name: "Kernel Utilization %",
+            type: 'line',
+            data: [[0,24.646757],[1,24.213387],[2,24.051248],[3,24.779523],[4,24.515912],[5,23.185301],[6,23.303659],[7,24.720109],[8,21.485538],[9,24.797773],[10,23.162919],[11,23.287425],[12,24.960554],[13,22.970061],[14,23.966445],[15,24.35859],[16,22.160201],[17,24.603092],[18,23.217773],[19,24.727367],[20,26.930749],[21,25.593869],[22,29.690403],[23,25.487959],[24,29.251587],[25,29.635154],[26,24.435863],[27,29.540912],[28,29.824454],[29,25.619709]],
+          }
+        ]
+      }
+
+      let cpi = {
+        ...base_line,
+        series: [
+          {
+            name: "CPI",
+            type: 'line',
+            data: [[0,1.9330167],[1,1.9215669],[2,1.9727912],[3,1.9793083],[4,1.9908375],[5,2.2685138],[6,2.2067308],[7,2.0049848],[8,3.9874192],[9,2.0031375],[10,2.1688103],[11,2.2180402],[12,1.9825619],[13,2.1740961],[14,2.1059519],[15,1.9743612],[16,2.3407524],[17,1.9445019],[18,2.1690721],[19,1.7315405],[20,1.5279656],[21,1.5428868],[22,1.3191206],[23,1.5612776],[24,1.3004482],[25,1.2979864],[26,1.6262456],[27,1.3134518],[28,1.3280925],[29,1.5633453]],
+          }
+        ]
+      }
+
+      let cpu_freq = {
+        ...base_line,
+        series: [
+          {
+            name: "CPU Frequency (GHz)",
+            type: 'line',
+            data: [[0,2.9931543],[1,2.9930984],[2,2.9926081],[3,2.992067],[4,2.9925805],[5,3.0829114],[6,3.0200383],[7,2.9920103],[8,3.4587099],[9,2.9779076],[10,3.059066],[11,3.0145587],[12,2.9925312],[13,3.0716801],[14,3.0037952],[15,2.9850912],[16,3.1213142],[17,2.9812859],[18,3.0871044],[19,2.9314504],[20,2.952374],[21,3.0765134],[22,2.5379074],[23,2.8434031],[24,2.7180981],[25,2.6254476],[26,3.0809186],[27,2.730599],[28,2.833668],[29,3.0619072]],
+          }
+        ]
+      }
+
+      let numa = {
+        ...base_line,
+        series: [
+          {
+            name: "Remote DRAM Reads %",
+            type: 'line',
+            data: [[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0],[9,0],[10,0],[11,0],[12,0],[13,0],[14,0],[15,0],[16,0],[17,0],[18,0],[19,0],[20,0],[21,0],[22,0],[23,0],[24,0],[25,0],[26,0],[27,0],[28,0],[29,0]],
+          }
+        ]
+      }
+
+      let cache = {
+        ...base_line,
+        series: [
+          {
+            name: "L1D",
+            type: 'line',
+            data: [[0,0.017517138],[1,0.017772815],[2,0.017989165],[3,0.017757633],[4,0.017851986],[5,0.01753899],[6,0.017591716],[7,0.017878966],[8,0.014706793],[9,0.018081281],[10,0.0173974],[11,0.017497446],[12,0.017838538],[13,0.017613137],[14,0.017536171],[15,0.0178899],[16,0.017108527],[17,0.017725517],[18,0.01749926],[19,0.017199165],[20,0.017236672],[21,0.017259886],[22,0.017624757],[23,0.017450106],[24,0.017569194],[25,0.017572251],[26,0.017319754],[27,0.017543659],[28,0.017577494],[29,0.017358691]],
+          },
+          {
+            name: "L2",
+            type: 'line',
+            data: [[0,0.018103707],[1,0.017888284],[2,0.017955521],[3,0.01820277],[4,0.017932177],[5,0.017381363],[6,0.017619781],[7,0.018062424],[8,0.017575048],[9,0.018050818],[10,0.017337155],[11,0.018526588],[12,0.018033916],[13,0.017157307],[14,0.018442439],[15,0.017851004],[16,0.017774427],[17,0.018121766],[18,0.017626442],[19,0.016199534],[20,0.015264676],[21,0.01392335],[22,0.013768234],[23,0.013846254],[24,0.01382469],[25,0.014127632],[26,0.01391728],[27,0.013983971],[28,0.01402067],[29,0.013708979]],
+          },
+          {
+            name: "LLC Data",
+            type: 'line',
+            data: [[0,0.002382308],[1,0.0023320237],[2,0.0024132129],[3,0.0024476458],[4,0.0024411698],[5,0.0032584225],[6,0.0031241156],[7,0.0024536083],[8,0.0086860296],[9,0.0025205367],[10,0.0036489226],[11,0.0018950196],[12,0.0024834965],[13,0.0018833708],[14,0.0031506573],[15,0.002495049],[16,0.0024548491],[17,0.0023964115],[18,0.0027607995],[19,0.0019209404],[20,0.0023069404],[21,0.0017591886],[22,0.002617422],[23,0.0041863804],[24,0.0013886027],[25,0.0025066635],[26,0.001857842],[27,0.0025181985],[28,0.0022733918],[29,0.0008532313]],
+          },
+        ]
+      }
+
+      let memory = {
+        ...base_line,
+        series: [
+          {
+            name: "Read",
+            type: 'line',
+            data: [[0,14319.199],[1,14204.248],[2,14183.887],[3,14201.448],[4,14228.315],[5,10092.094],[6,10546.298],[7,14136.306],[8,5793.797],[9,14585.982],[10,12165.463],[11,7988.5259],[12,14255.79],[13,6471.2918],[14,13804.772],[15,14265.572],[16,6500.0977],[17,14270.896],[18,8906.5059],[19,13225.575],[20,19174.947],[21,9282.9235],[22,22681.436],[23,18977.066],[24,13663.204],[25,22776.709],[26,9009.5071],[27,23301.882],[28,22268.87],[29,4969.5413]],
+          },
+          {
+            name: "Write",
+            type: 'line',
+            data: [[0,5736.1959],[1,5630.3565],[2,5624.6502],[3,5593.7082],[4,5610.1306],[5,3846.7628],[6,4153.5827],[7,5601.8026],[8,2286.5105],[9,5646.2849],[10,4791.5222],[11,3119.6551],[12,5635.7207],[13,2538.4865],[14,5406.1021],[15,5637.0529],[16,2447.9411],[17,5623.691],[18,3536.2793],[19,5317.4746],[20,8480.955],[21,4374.1461],[22,10648.921],[23,8723.9229],[24,6498.8378],[25,10721.311],[26,4284.2887],[27,10952.135],[28,10448.182],[29,2427.2544]],
+          },
+          {
+            name: "Total",
+            type: 'line',
+            data: [[0,20055.395],[1,19834.605],[2,19808.537],[3,19795.156],[4,19838.445],[5,13938.856],[6,14699.881],[7,19738.109],[8,8080.3074],[9,20232.267],[10,16956.985],[11,11108.181],[12,19891.511],[13,9009.7783],[14,19210.874],[15,19902.625],[16,8948.0388],[17,19894.587],[18,12442.785],[19,18543.05],[20,27655.902],[21,13657.07],[22,33330.357],[23,27700.988],[24,20162.042],[25,33498.02],[26,13293.796],[27,34254.018],[28,32717.052],[29,7396.7957]],
+          },
+        ]
+      }
+
+      let package_power = {
+        ...base_line,
+        series: [
+          {
+            name: "Package Power (Watts)",
+            type: 'line',
+            data: [[0,186.25587],[1,184.40513],[2,184.38042],[3,184.43941],[4,184.47972],[5,166.53251],[6,173.80803],[7,184.26646],[8,153.31208],[9,186.95142],[10,176.42022],[11,163.45172],[12,184.73054],[13,154.3176],[14,185.51314],[15,184.47652],[16,156.71567],[17,184.32421],[18,164.25087],[19,176.77061],[20,184.46917],[21,154.56869],[22,185.7496],[23,173.67734],[24,167.0234],[25,184.42651],[26,152.00436],[27,188.72536],[28,182.09435],[29,144.9546]],
+          }
+        ]
+      }
+
+      let dram_power = {
+        ...base_line,
+        series: [
+          {
+            name: "DRAM Power (Watts)",
+            type: 'line',
+            data: [[0,10.898788],[1,10.788252],[2,10.803837],[3,10.720866],[4,10.747966],[5,9.5793404],[6,9.6864563],[7,10.69301],[8,8.4788674],[9,10.865948],[10,10.177444],[11,9.0523759],[12,10.718302],[13,8.6160174],[14,10.666255],[15,10.831485],[16,8.6461678],[17,10.804095],[18,9.300518],[19,10.448909],[20,12.086442],[21,9.3673148],[22,12.852774],[23,11.8254],[24,10.511809],[25,12.84591],[26,9.2841455],[27,13.016347],[28,12.670519],[29,8.2409599]],
+          }
+        ]
+      }
+
+      let c6_core = {
+        ...base_line,
+        series: [
+          {
+            name: "Core C6 Residency %",
+            type: 'line',
+            data: [[0,0],[1,0.000086199517],[2,0],[3,0],[4,0],[5,11.65595],[6,11.357129],[7,0],[8,23.66922],[9,0],[10,4.7026465],[11,18.04582],[12,0],[13,21.69092],[14,1.6569378],[15,0],[16,25.922031],[17,0],[18,15.104163],[19,9.1694902],[20,0],[21,25.146083],[22,0],[23,7.7908539],[24,16.250537],[25,0.00017988572],[26,25.279282],[27,0],[28,0.41792274],[29,29.689592]],
+          }
+        ]
+      }
+
+      const diffreport = (e) => {
+        let reader = new FileReader();
+        reader.onload = (e) => {
+          let new_metrics = JSON.parse(e.target.result.split("\n").filter(e => e.includes("const all_metrics ="))[0].split("const all_metrics =")[1])
+          let copy = JSON.parse(JSON.stringify(current_metrics))
+          let temp_mindiff = 0
+          let temp_maxdiff = 0
+          for (const metric of copy) {
+            for (const other_metric of new_metrics) {
+              if (metric[0] === other_metric[0]) {
+                metric.other = other_metric[1]
+                if (other_metric[1] < metric[1]) {
+                  metric.diff = ((other_metric[1] / metric[1]) - 1) * 100
+                } else {
+                  metric.diff = ((metric[1] / other_metric[1]) - 1) * -100
+                }
+                if (temp_maxdiff == 0 || temp_maxdiff < metric.diff) {
+                  temp_maxdiff = metric.diff
+                }
+                if (temp_mindiff == 0 || temp_mindiff > metric.diff) {
+                  temp_mindiff = metric.diff
+                }
+              }
+            }
+          }
+          set_maxdiff(temp_maxdiff)
+          set_mindiff(temp_mindiff)
+          setCurrent_metrics(copy)
+        };
+
+        reader.readAsText(e.target.files[0]);
+      }
+
+
+
+      return (
+        <div>
+          <Box display="flex" justifyContent="center" width="100%" sx={{ zIndex: 10, borderBottom: 1, borderColor: "divider", position: 'fixed', bgcolor: 'background.paper' }}>
+            <Tabs
+              value={systemTabs}
+              onChange={handleChange}
+              variant="scrollable"
+            >
+              <Tab label="TMAM" />
+              <Tab label="CPU" />
+              <Tab label="Memory" />
+              <Tab label="Power" />
+              <Tab label="All Metrics" />
+              <Tab label="System Info" />
+              <Tab label="Metadata" />
+            </Tabs>
+          </Box>
+          <div style={{ padding: "80px 24px 24px 24px" }}>
+            <TabPanel
+              value={systemTabs}
+              index={0}
+            >
+              <Grid container style={{ padding: "0px 0px 24px 0px", borderBottom: "1px solid rgba(0, 0, 0, 0.1)" }}>
+                <Grid item xs={5}>
+                  <Typography variant="h2">
+                    Top-down Microarchitecture Analysis Method (TMAM)
+                  </Typography>
+                  <ul>
+                    <li>
+                      <Typography variant="body1">
+                        The Frontend is responsible for fetching the program code
+                        represented in architectural instructions and decoding
+                        them into one or more low-level hardware operations called
+                        micro-ops (uOps).
+                      </Typography>
+                    </li>
+                    <li>
+                      <Typography variant="body1">
+                        The Backend is responsible for monitoring when uOp's data
+                        operands are available and executing the uOp in an
+                        available execution unit.
+                      </Typography>
+                    </li>
+                    <li>
+                      <Typography variant="body1">
+                        Retirement is where results of the uOp are committed to
+                        the architectural state (CPU registers or written back to
+                        memory).
+                      </Typography>
+                    </li>
+                    <li>
+                      <Typography variant="body1">
+                        Usually, most uOps pass completely through the pipeline
+                        and retire, but sometimes speculatively fetched uOps may
+                        get cancelled before retirement – like in the case of
+                        mis-predicted branches.
+                      </Typography>
+                    </li>
+                    <li>
+                      <a href="https://www.intel.com/content/www/us/en/develop/documentation/vtune-cookbook/top/methodologies/top-down-microarchitecture-analysis-method.html">
+                        Learn more here
+                      </a>
+                    </li>
+                  </ul>
+                </Grid>
+                <Grid item xs={7}>
+                  <ReactECharts style={{ minHeight: "400px" }} option={tmasunburst} />
+                </Grid>
+              </Grid>
+              <Grid container style={{ borderBottom: "1px solid rgba(0, 0, 0, 0.1)", paddingBottom: "24px" }}>
+                <Grid item xs={5}>
+                  <Typography variant="h2">
+                    Level 1 TMA Metrics Over Time
+                  </Typography>
+                  <Typography variant="body1">
+                    Here, we show the TMA Frontend, Backend, Retiring and Bad Speculation percentages over the collection period.
+                  </Typography>
+                </Grid>
+                <Grid item xs={7}>
+                  <ReactECharts style={{ minHeight: "250px" }} option={level1tma} />
+                </Grid>
+              </Grid>
+              <Grid container style={{ paddingTop: "24px" }}>
+                <Grid item xs={5}>
+                  <Typography variant="h2">
+                    All TMA Metrics
+                  </Typography>
+                  <Typography variant="body1">
+                    List of all collected Top-down Microarchitecture Analysis metrics.
+                  </Typography>
+                </Grid>
+                <Grid item xs={7} sx={{ display: 'flex', justifyContent: 'center' }}>
+                  <MetricsTable 
+                    data={current_metrics}
+                    filterPrefix={["TMA"]}
+                    containerStyle={{ height: "500px", overflow: "auto", width: "fit-content" }}
+                  />
+                </Grid>
+              </Grid>
+            </TabPanel>
+            <TabPanel
+              value={systemTabs}
+              index={1}
+            >
+              <Grid container style={{ borderBottom: "1px solid rgba(0, 0, 0, 0.1)", paddingBottom: "24px" }}>
+                <Grid item xs={5}>
+                  <Typography variant="h2">
+                    CPU Utilization
+                  </Typography>
+                  <Typography variant="body1">
+                    Percentage of time spent in the active CPU power state C0. When a core is not being utilized it can go into lower power states to reduce idle energy consumption. Higher CPU utilization generally indicates that the system is being effectively used, but very high utilization (e.g., consistently above 80-90%) may lead to performance bottlenecks if the CPU becomes a limiting factor for application performance.
+                  </Typography>
+                </Grid>
+                <Grid item xs={7}>
+                  <ReactECharts style={{ minHeight: "250px" }} option={cpu_util} />
+                </Grid>
+              </Grid>
+              <Grid container style={{ borderBottom: "1px solid rgba(0, 0, 0, 0.1)", paddingBottom: "24px" }}>
+                <Grid item xs={5}>
+                  <Typography variant="h2">
+                    CPU Utilization in Kernel Mode
+                  </Typography>
+                  <Typography variant="body1">
+                    The percentage of CPU time spent executing system-level operations, such as handling hardware interrupts and running operating system kernel code, rather than user-level applications. This metric helps identify if high CPU usage is due to system overhead or application demands.
+                  </Typography>
+                </Grid>
+                <Grid item xs={7}>
+                  <ReactECharts style={{ minHeight: "250px" }} option={kernel_util} />
+                </Grid>
+              </Grid>
+              <Grid container style={{ borderBottom: "1px solid rgba(0, 0, 0, 0.1)", paddingBottom: "24px" }}>
+                <Grid item xs={5}>
+                  <Typography variant="h2">
+                    CPI
+                  </Typography>
+                  <Typography variant="body1">
+                    Cycles per instruction retired; indicating how much time each executed instruction took; in units of cycles. Often this metric shows how efficiently applications are using the underlying hardware. A lower CPI could indicate that instructions are not hitting bottlenecks and retiring quickly.
+                  </Typography>
+                </Grid>
+                <Grid item xs={7}>
+                  <ReactECharts style={{ minHeight: "250px" }} option={cpi} />
+                </Grid>
+              </Grid>
+              <Grid container>
+                <Grid item xs={5}>
+                  <Typography variant="h2">
+                    CPU Operating Frequency (in GHz)
+                  </Typography>
+                  <Typography variant="body1">
+                    This is the speed of the CPU clock. Higher frequencies allow faster execution. Usually servers are able to change their frequency based on utilization to conserve energy or turbo for short periods of time to boost performance.
+                  </Typography>
+                </Grid>
+                <Grid item xs={7}>
+                  <ReactECharts style={{ minHeight: "250px" }} option={cpu_freq} />
+                </Grid>
+              </Grid>
+            </TabPanel>
+            <TabPanel
+              value={systemTabs}
+              index={2}
+            >
+              <Grid container style={{ borderBottom: "1px solid rgba(0, 0, 0, 0.1)", paddingBottom: "24px" }}>
+                <Grid item xs={5}>
+                  <Typography variant="h2">
+                    Memory Bandwidth
+                  </Typography>
+                  <Typography variant="body1">
+                    Here, DDR memory bandwidth is broken down into reads, writes and total (read + write) in MB/sec.
+                  </Typography>
+                </Grid>
+                <Grid item xs={7}>
+                  <ReactECharts style={{ minHeight: "250px" }} option={memory} />
+                </Grid>
+              </Grid>
+              <Grid container style={{ borderBottom: "1px solid rgba(0, 0, 0, 0.1)", paddingBottom: "24px" }}>
+                <Grid item xs={5}>
+                  <Typography variant="h2">
+                    Remote DRAM reads %
+                  </Typography>
+                  <Typography variant="body1">
+                    The memory reads that miss the last level cache (LLC) and are addressed to remote DRAM as a percentage of total memory read accesses. This does not include LLC prefetches.
+                  </Typography>
+                </Grid>
+                <Grid item xs={7}>
+                  <ReactECharts style={{ minHeight: "250px" }} option={numa} />
+                </Grid>
+              </Grid>
+              <Grid container>
+                <Grid item xs={5}>
+                  <Typography variant="h2">
+                    Cache MPI (misses per instruction)
+                  </Typography>
+                  <Typography variant="body1">
+                    The ratio of the number of requests missing cache to the total number of completed instructions, at each level of cache (L1d, L2 and LLC)
+                  </Typography>
+                </Grid>
+                <Grid item xs={7}>
+                  <ReactECharts style={{ minHeight: "250px" }} option={cache} />
+                </Grid>
+              </Grid>
+            </TabPanel>
+            <TabPanel
+              value={systemTabs}
+              index={3}
+            >
+              <Grid container style={{ borderBottom: "1px solid rgba(0, 0, 0, 0.1)", paddingBottom: "24px" }}>
+                <Grid item xs={5}>
+                  <Typography variant="h2">
+                    Package Power
+                  </Typography>
+                  <Typography variant="body1">
+                    The amount of power, in watts, consumed by the CPU package on the system. We provide this metric primarily for determining if system performance is being adversely affected by power throttling, although it can also be used to calculate energy consumption.
+                  </Typography>
+                </Grid>
+                <Grid item xs={7}>
+                  <ReactECharts style={{ minHeight: "250px" }} option={package_power} />
+                </Grid>
+              </Grid>
+              <Grid container style={{ borderBottom: "1px solid rgba(0, 0, 0, 0.1)", paddingBottom: "24px" }}>
+                <Grid item xs={5}>
+                  <Typography variant="h2">
+                    DRAM Power
+                  </Typography>
+                  <Typography variant="body1">
+                    The amount of power, in watts, consumed by the DRAM on the system. We provide this metric primarily for determining if system performance is being adversely affected by power throttling, although it can also be used to calculate energy consumption.
+                  </Typography>
+                </Grid>
+                <Grid item xs={7}>
+                  <ReactECharts style={{ minHeight: "250px" }} option={dram_power} />
+                </Grid>
+              </Grid>
+              <Grid container>
+                <Grid item xs={5}>
+                  <Typography variant="h2">
+                    Core C6 State Residency Percentage
+                  </Typography>
+                  <Typography variant="body1">
+                    The average percentage of time the cores spent in the C6 low power state. C6 is a deep core idle state where the core's internal clocks are stopped and the core voltage is reduced. This state saves more power than lighter C-states, but it takes longer to enter and exit, which can impact performance if the core needs to become active again quickly.
+                  </Typography>
+                </Grid>
+                <Grid item xs={7}>
+                  <ReactECharts style={{ minHeight: "250px" }} option={c6_core} />
+                </Grid>
+              </Grid>
+            </TabPanel>
+            <TabPanel
+              value={systemTabs}
+              index={4}
+            >
+              <TextField 
+                id="outlined-basic" 
+                onChange={diffreport} 
+                inputProps={{ accept: '.html' }} 
+                fullWidth 
+                label="Compare with other *_metrics_summary.html" 
+                InputLabelProps={{ shrink: true }} 
+                sx={{ paddingBottom: "24px" }} 
+                type="file" 
+                variant="outlined" 
+              />
+              <MetricsTable 
+                data={current_metrics}
+                showComparison={true}
+                containerStyle={{ width: "fit-content" }}
+              />
+            </TabPanel>
+            <TabPanel
+              value={systemTabs}
+              index={5}
+            >
+            <TableContainer component={Paper} sx={{ width: "fit-content" }}>
+                <Table size="small" style={{ tableLayout: 'auto' }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Key</TableCell>
+                      <TableCell>Value</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {system_info.map(([key, value]) => (
+                      <TableRow key={key}>
+                      <TableCell sx={{ fontFamily: 'Monospace' }} component="th" scope="row" >
+                        {JSON.stringify(key)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily: 'Monospace' }} align="left">
+                        {JSON.stringify(value)}
+                      </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </TabPanel>
+            <TabPanel
+              value={systemTabs}
+              index={6}
+            >
+            <TableContainer component={Paper} sx={{ width: "fit-content" }}>
+                <Table size="small" style={{ tableLayout: 'auto' }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Key</TableCell>
+                      <TableCell>Value</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {Object.entries(metadata).sort(([key1], [key2]) => key1.localeCompare(key2)).map(([key, value]) => (
+                      <TableRow key={key}>
+                      <TableCell sx={{ fontFamily: 'Monospace' }} component="th" scope="row" >
+                        {JSON.stringify(key)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily: 'Monospace' }} align="left">
+                        {JSON.stringify(value)}
+                      </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </TabPanel>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(
+      <ThemeProvider theme={theme}>
+        {/* CssBaseline kickstart an elegant, consistent, and simple baseline to build upon. */}
+        <CssBaseline />
+        <App />
+      </ThemeProvider>
+    );
+  </script>
+</body>
+
+</html>
