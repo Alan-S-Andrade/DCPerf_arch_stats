@@ -1,0 +1,8 @@
+AntiPatternID_59 → {
+    for (auto merchant_service : merchant_services.services()) #old code
+    for (const auto& merchant_service : merchant_services.services()); #new code,
+    unnecesary copies, # rationale
+    metadata like language
+}
+
+

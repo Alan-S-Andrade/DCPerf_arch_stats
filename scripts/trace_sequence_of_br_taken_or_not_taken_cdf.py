@@ -89,7 +89,7 @@ def compute_cdf(data):
     y = [i / n for i in range(1, n + 1)]
     return x, y
 
-def plot_cdfs(run_dict, title, out_path):
+def plot_cdfs_taken_not_taken(run_dict, title, out_path):
     plt.figure(figsize=(9, 6))
     for label, runs in run_dict.items():
         if not runs:
