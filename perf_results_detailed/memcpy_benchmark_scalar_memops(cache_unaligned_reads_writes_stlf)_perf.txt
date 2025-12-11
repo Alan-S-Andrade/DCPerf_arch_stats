@@ -1,0 +1,28 @@
+Benchmark: memcpy_benchmark
+Unit: scalar_memops(cache_unaligned_reads_writes_stlf)
+Throughput estimate: 3.23e+03 iters/s
+Target duration: 15.457s
+Actual elapsed: 0.201s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/memcpy_benchmark --bm_pattern ^scalar_memops\(cache_unaligned_reads_writes_stlf\)$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        30,667,487      cycles                                                        (20.76%)
+        25,014,139      instructions              #    0.82  insn per cycle           (40.70%)
+           961,427      L1-icache-load-misses                                         (50.66%)
+             3,869      iTLB-load-misses                                              (69.72%)
+         5,406,362      L1-dcache-loads                                               (89.11%)
+           176,366      L1-dcache-load-misses     #    3.26% of all L1-dcache accesses  (99.09%)
+           737,010      L1-dcache-stores                                              (50.34%)
+               978      LLC-load-misses                                               (30.37%)
+            89,831      branch-load-misses                                            (30.39%)
+            89,954      branch-misses                                                 (30.41%)
+           858,144      r2424                                                         (10.97%)
+
+       0.017010832 seconds time elapsed
+
+

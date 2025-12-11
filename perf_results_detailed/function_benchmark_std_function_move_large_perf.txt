@@ -1,0 +1,28 @@
+Benchmark: function_benchmark
+Unit: std_function_move_large
+Throughput estimate: 4.58e+03 iters/s
+Target duration: 10.913s
+Actual elapsed: 0.215s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/function_benchmark --bm_pattern ^std_function_move_large$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        39,057,398      cycles                                                        (53.20%)
+        30,830,208      instructions              #    0.79  insn per cycle           (64.89%)
+         1,388,655      L1-icache-load-misses                                         (64.92%)
+            11,198      iTLB-load-misses                                              (64.93%)
+         5,198,230      L1-dcache-loads                                               (64.94%)
+           263,402      L1-dcache-load-misses     #    5.07% of all L1-dcache accesses  (63.93%)
+         1,751,584      L1-dcache-stores                                              (46.80%)
+             6,687      LLC-load-misses                                               (46.79%)
+           193,917      branch-load-misses                                            (57.57%)
+           206,400      branch-misses                                                 (59.52%)
+         1,010,842      r2424                                                         (47.83%)
+
+       0.033362272 seconds time elapsed
+
+

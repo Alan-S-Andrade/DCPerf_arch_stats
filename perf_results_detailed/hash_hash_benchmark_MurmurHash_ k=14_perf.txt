@@ -1,0 +1,28 @@
+Benchmark: hash_hash_benchmark
+Unit: MurmurHash: k=14
+Throughput estimate: 1.93e+03 iters/s
+Target duration: 25.849s
+Actual elapsed: 0.251s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/hash_hash_benchmark --bm_pattern ^MurmurHash:\ k=14$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        86,506,786      cycles                                                        (53.76%)
+       120,950,815      instructions              #    1.40  insn per cycle           (65.32%)
+         1,893,905      L1-icache-load-misses                                         (65.63%)
+            12,621      iTLB-load-misses                                              (67.63%)
+        14,016,159      L1-dcache-loads                                               (72.51%)
+           432,876      L1-dcache-load-misses     #    3.09% of all L1-dcache accesses  (66.40%)
+        13,320,917      L1-dcache-stores                                              (43.95%)
+             1,394      LLC-load-misses                                               (39.08%)
+           262,237      branch-load-misses                                            (44.88%)
+           254,203      branch-misses                                                 (50.67%)
+         1,012,657      r2424                                                         (44.89%)
+
+       0.064828800 seconds time elapsed
+
+

@@ -1,0 +1,28 @@
+Benchmark: memset_benchmark
+Unit: memset: size=32
+Throughput estimate: 1.89e+03 iters/s
+Target duration: 26.429s
+Actual elapsed: 0.203s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/memset_benchmark --bm_pattern ^memset:\ size=32$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        30,050,390      cycles                                                        (20.43%)
+        23,339,597      instructions              #    0.78  insn per cycle           (40.45%)
+           933,172      L1-icache-load-misses                                         (50.55%)
+             3,993      iTLB-load-misses                                              (69.69%)
+         5,262,393      L1-dcache-loads                                               (89.14%)
+           182,281      L1-dcache-load-misses     #    3.46% of all L1-dcache accesses  (99.10%)
+           833,074      L1-dcache-stores                                              (50.44%)
+                92      LLC-load-misses                                               (30.39%)
+            85,268      branch-load-misses                                            (30.41%)
+            85,397      branch-misses                                                 (30.43%)
+           928,569      r2424                                                         (10.93%)
+
+       0.017098261 seconds time elapsed
+
+

@@ -1,0 +1,28 @@
+Benchmark: synchronization_lifo_sem_bench
+Unit: single_thread_native_trywait
+Throughput estimate: 4.06e+03 iters/s
+Target duration: 12.315s
+Actual elapsed: 0.220s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/synchronization_lifo_sem_bench --bm_pattern ^single_thread_native_trywait$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        32,400,948      cycles                                                        (58.11%)
+        24,370,963      instructions              #    0.75  insn per cycle           (68.58%)
+         1,105,588      L1-icache-load-misses                                         (68.66%)
+             7,699      iTLB-load-misses                                              (68.68%)
+         6,966,925      L1-dcache-loads                                               (68.71%)
+           295,152      L1-dcache-load-misses     #    4.24% of all L1-dcache accesses  (57.70%)
+         2,731,753      L1-dcache-stores                                              (41.80%)
+             3,053      LLC-load-misses                                               (41.79%)
+           171,087      branch-load-misses                                            (52.23%)
+           168,008      branch-misses                                                 (60.63%)
+           608,188      r2424                                                         (52.80%)
+
+       0.035249058 seconds time elapsed
+
+

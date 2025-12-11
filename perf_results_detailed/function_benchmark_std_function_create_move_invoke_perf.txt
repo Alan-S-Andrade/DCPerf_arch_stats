@@ -1,0 +1,28 @@
+Benchmark: function_benchmark
+Unit: std_function_create_move_invoke
+Throughput estimate: 2.94e+04 iters/s
+Target duration: 1.702s
+Actual elapsed: 0.202s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/function_benchmark --bm_pattern ^std_function_create_move_invoke$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        40,018,615      cycles                                                        (17.19%)
+        18,004,576      instructions              #    0.45  insn per cycle           (38.40%)
+           639,641      L1-icache-load-misses                                         (54.03%)
+             3,246      iTLB-load-misses                                              (75.25%)
+         4,251,841      L1-dcache-loads                                               (94.38%)
+           175,506      L1-dcache-load-misses     #    4.13% of all L1-dcache accesses
+         5,272,411      L1-dcache-stores                                              (46.08%)
+             1,820      LLC-load-misses                                               (24.83%)
+           179,523      branch-load-misses                                            (24.85%)
+           179,609      branch-misses                                                 (24.87%)
+         1,319,590      r2424                                                         (5.68%)
+
+       0.016968563 seconds time elapsed
+
+

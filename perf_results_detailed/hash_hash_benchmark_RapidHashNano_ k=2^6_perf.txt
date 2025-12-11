@@ -1,0 +1,28 @@
+Benchmark: hash_hash_benchmark
+Unit: RapidHashNano: k=2^6
+Throughput estimate: 2.35e+03 iters/s
+Target duration: 21.255s
+Actual elapsed: 0.232s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/hash_hash_benchmark --bm_pattern ^RapidHashNano:\ k=2\^6$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        50,728,327      cycles                                                        (63.18%)
+        73,238,460      instructions              #    1.44  insn per cycle           (73.99%)
+         1,222,447      L1-icache-load-misses                                         (74.04%)
+             8,778      iTLB-load-misses                                              (74.04%)
+        12,675,798      L1-dcache-loads                                               (74.03%)
+           327,912      L1-dcache-load-misses     #    2.59% of all L1-dcache accesses  (56.72%)
+        15,688,263      L1-dcache-stores                                              (34.63%)
+                11      LLC-load-misses                                               (34.64%)
+           145,764      branch-load-misses                                            (43.31%)
+           142,604      branch-misses                                                 (51.98%)
+           524,241      r2424                                                         (51.98%)
+
+       0.043191658 seconds time elapsed
+
+

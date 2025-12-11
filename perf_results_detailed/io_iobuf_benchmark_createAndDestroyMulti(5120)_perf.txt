@@ -1,0 +1,28 @@
+Benchmark: io_iobuf_benchmark
+Unit: createAndDestroyMulti(5120)
+Throughput estimate: 6.00e+07 iters/s
+Target duration: 0.050s
+Actual elapsed: 0.200s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/io_iobuf_benchmark --bm_pattern ^createAndDestroyMulti\(5120\)$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        39,280,440      cycles                                                        (20.70%)
+        40,209,362      instructions              #    1.02  insn per cycle           (40.81%)
+           922,374      L1-icache-load-misses                                         (51.51%)
+             3,973      iTLB-load-misses                                              (70.75%)
+         5,230,443      L1-dcache-loads                                               (89.66%)
+           176,348      L1-dcache-load-misses     #    3.37% of all L1-dcache accesses  (99.11%)
+           635,318      L1-dcache-stores                                              (49.48%)
+               167      LLC-load-misses                                               (29.34%)
+            85,486      branch-load-misses                                            (29.36%)
+            85,620      branch-misses                                                 (29.38%)
+           877,554      r2424                                                         (10.41%)
+
+       0.016955391 seconds time elapsed
+
+

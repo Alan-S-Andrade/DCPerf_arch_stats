@@ -1,0 +1,28 @@
+Benchmark: fibers_fibers_benchmark
+Unit: FiberManagerAllocateLargeChunk
+Throughput estimate: 1.44e+10 iters/s
+Target duration: 0.050s
+Actual elapsed: 0.223s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/fibers_fibers_benchmark --bm_pattern ^FiberManagerAllocateLargeChunk$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        34,824,591      cycles                                                        (61.50%)
+        27,753,032      instructions              #    0.80  insn per cycle           (71.12%)
+         1,112,245      L1-icache-load-misses                                         (71.13%)
+             7,564      iTLB-load-misses                                              (71.15%)
+         6,221,999      L1-dcache-loads                                               (71.16%)
+           348,347      L1-dcache-load-misses     #    5.60% of all L1-dcache accesses  (54.60%)
+         3,082,740      L1-dcache-stores                                              (38.50%)
+             3,916      LLC-load-misses                                               (38.48%)
+           175,574      branch-load-misses                                            (48.11%)
+           166,967      branch-misses                                                 (57.72%)
+           560,113      r2424                                                         (55.09%)
+
+       0.038800544 seconds time elapsed
+
+

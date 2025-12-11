@@ -1,0 +1,28 @@
+Benchmark: hash_hash_benchmark
+Unit: SpookyHashV2: k=10
+Throughput estimate: 5.19e+03 iters/s
+Target duration: 9.640s
+Actual elapsed: 0.248s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/hash_hash_benchmark --bm_pattern ^SpookyHashV2:\ k=10$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        71,473,495      cycles                                                        (51.14%)
+        86,948,512      instructions              #    1.22  insn per cycle           (63.37%)
+         1,384,486      L1-icache-load-misses                                         (65.24%)
+             9,362      iTLB-load-misses                                              (70.48%)
+        12,842,631      L1-dcache-loads                                               (76.55%)
+           342,548      L1-dcache-load-misses     #    2.67% of all L1-dcache accesses  (68.54%)
+        15,361,933      L1-dcache-stores                                              (41.76%)
+             1,253      LLC-load-misses                                               (35.66%)
+           216,338      branch-load-misses                                            (41.79%)
+           210,957      branch-misses                                                 (47.92%)
+           900,597      r2424                                                         (41.86%)
+
+       0.062483528 seconds time elapsed
+
+

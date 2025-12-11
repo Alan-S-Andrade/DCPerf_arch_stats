@@ -1,0 +1,28 @@
+Benchmark: memcpy_benchmark
+Unit: bench(256_to_1024_COLD_glibc)
+Throughput estimate: 6.51e+04 iters/s
+Target duration: 0.768s
+Actual elapsed: 0.211s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/memcpy_benchmark --bm_pattern ^bench\(256_to_1024_COLD_glibc\)$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        30,757,023      cycles                                                        (20.69%)
+        22,956,933      instructions              #    0.75  insn per cycle           (40.70%)
+           941,718      L1-icache-load-misses                                         (50.99%)
+             4,185      iTLB-load-misses                                              (70.07%)
+         5,537,545      L1-dcache-loads                                               (89.27%)
+           188,787      L1-dcache-load-misses     #    3.41% of all L1-dcache accesses  (99.07%)
+         1,155,321      L1-dcache-stores                                              (50.04%)
+             1,892      LLC-load-misses                                               (30.01%)
+            99,736      branch-load-misses                                            (30.03%)
+            99,854      branch-misses                                                 (30.05%)
+           932,151      r2424                                                         (10.81%)
+
+       0.016998483 seconds time elapsed
+
+

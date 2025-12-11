@@ -1,0 +1,28 @@
+Benchmark: synchronization_lifo_sem_bench
+Unit: contendedUse(32_to_32)
+Throughput estimate: 7.28e+08 iters/s
+Target duration: 0.050s
+Actual elapsed: 0.204s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/synchronization_lifo_sem_bench --bm_pattern ^contendedUse\(32_to_32\)$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        31,830,319      cycles                                                        (20.74%)
+        27,418,751      instructions              #    0.86  insn per cycle           (40.72%)
+           944,968      L1-icache-load-misses                                         (50.63%)
+             3,908      iTLB-load-misses                                              (70.00%)
+         5,254,707      L1-dcache-loads                                               (89.26%)
+           175,837      L1-dcache-load-misses     #    3.35% of all L1-dcache accesses  (99.36%)
+           619,551      L1-dcache-stores                                              (50.10%)
+                43      LLC-load-misses                                               (30.09%)
+            82,895      branch-load-misses                                            (30.11%)
+            83,024      branch-misses                                                 (30.13%)
+           838,555      r2424                                                         (10.81%)
+
+       0.017008199 seconds time elapsed
+
+

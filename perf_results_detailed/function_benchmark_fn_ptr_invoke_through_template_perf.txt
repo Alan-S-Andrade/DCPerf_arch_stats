@@ -1,0 +1,28 @@
+Benchmark: function_benchmark
+Unit: fn_ptr_invoke_through_template
+Throughput estimate: 5.18e+02 iters/s
+Target duration: 60.000s
+Actual elapsed: 0.196s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/function_benchmark --bm_pattern ^fn_ptr_invoke_through_template$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        28,453,391      cycles                                                        (21.30%)
+         9,195,697      instructions              #    0.32  insn per cycle           (41.38%)
+           864,748      L1-icache-load-misses                                         (51.24%)
+             3,810      iTLB-load-misses                                              (70.21%)
+         5,274,345      L1-dcache-loads                                               (88.60%)
+           174,490      L1-dcache-load-misses     #    3.31% of all L1-dcache accesses  (98.87%)
+         4,119,296      L1-dcache-stores                                              (49.98%)
+               535      LLC-load-misses                                               (29.87%)
+           101,445      branch-load-misses                                            (29.90%)
+           101,565      branch-misses                                                 (29.92%)
+           798,337      r2424                                                         (11.48%)
+
+       0.015578606 seconds time elapsed
+
+

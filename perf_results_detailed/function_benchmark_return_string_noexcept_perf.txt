@@ -1,0 +1,28 @@
+Benchmark: function_benchmark
+Unit: return_string_noexcept
+Throughput estimate: 7.89e+02 iters/s
+Target duration: 60.000s
+Actual elapsed: 0.198s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/function_benchmark --bm_pattern ^return_string_noexcept$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        47,734,274      cycles                                                        (19.99%)
+        32,980,841      instructions              #    0.69  insn per cycle           (40.29%)
+           747,953      L1-icache-load-misses                                         (51.65%)
+             3,164      iTLB-load-misses                                              (71.13%)
+         2,970,053      L1-dcache-loads                                               (90.19%)
+           163,984      L1-dcache-load-misses     #    5.52% of all L1-dcache accesses  (99.16%)
+         4,958,394      L1-dcache-stores                                              (49.28%)
+             1,288      LLC-load-misses                                               (28.95%)
+           208,169      branch-load-misses                                            (28.98%)
+           208,212      branch-misses                                                 (29.00%)
+           978,556      r2424                                                         (9.88%)
+
+       0.016965230 seconds time elapsed
+
+

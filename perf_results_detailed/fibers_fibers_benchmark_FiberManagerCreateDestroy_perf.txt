@@ -1,0 +1,28 @@
+Benchmark: fibers_fibers_benchmark
+Unit: FiberManagerCreateDestroy
+Throughput estimate: 1.46e+07 iters/s
+Target duration: 0.050s
+Actual elapsed: 0.206s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/fibers_fibers_benchmark --bm_pattern ^FiberManagerCreateDestroy$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        33,013,302      cycles                                                        (59.52%)
+        26,922,698      instructions              #    0.82  insn per cycle           (69.63%)
+         1,524,497      L1-icache-load-misses                                         (69.62%)
+            13,858      iTLB-load-misses                                              (69.60%)
+        11,567,964      L1-dcache-loads                                               (69.58%)
+           448,673      L1-dcache-load-misses     #    3.88% of all L1-dcache accesses  (55.99%)
+           941,482      L1-dcache-stores                                              (40.55%)
+             1,358      LLC-load-misses                                               (40.57%)
+           125,592      branch-load-misses                                            (50.70%)
+           128,673      branch-misses                                                 (59.92%)
+           567,925      r2424                                                         (54.21%)
+
+       0.035615005 seconds time elapsed
+
+

@@ -1,0 +1,28 @@
+Benchmark: function_benchmark
+Unit: scope_guard_std_function
+Throughput estimate: 4.58e+03 iters/s
+Target duration: 10.914s
+Actual elapsed: 0.205s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/function_benchmark --bm_pattern ^scope_guard_std_function$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        30,481,742      cycles                                                        (21.59%)
+         9,996,531      instructions              #    0.33  insn per cycle           (41.45%)
+           920,046      L1-icache-load-misses                                         (51.48%)
+             4,333      iTLB-load-misses                                              (70.64%)
+         5,419,153      L1-dcache-loads                                               (89.44%)
+           187,557      L1-dcache-load-misses     #    3.46% of all L1-dcache accesses  (99.29%)
+         4,328,824      L1-dcache-stores                                              (49.32%)
+               366      LLC-load-misses                                               (29.44%)
+           102,013      branch-load-misses                                            (29.46%)
+           102,136      branch-misses                                                 (29.48%)
+           832,932      r2424                                                         (10.63%)
+
+       0.017031718 seconds time elapsed
+
+

@@ -1,0 +1,28 @@
+Benchmark: hash_checksum_benchmark
+Unit: crc32c_4096
+Throughput estimate: 8.93e+06 iters/s
+Target duration: 0.050s
+Actual elapsed: 0.227s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/hash_checksum_benchmark --bm_pattern ^crc32c_4096$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        34,660,322      cycles                                                        (62.18%)
+        25,303,724      instructions              #    0.73  insn per cycle           (71.69%)
+         1,229,957      L1-icache-load-misses                                         (71.70%)
+             9,451      iTLB-load-misses                                              (71.70%)
+         6,692,619      L1-dcache-loads                                               (71.71%)
+           352,541      L1-dcache-load-misses     #    5.27% of all L1-dcache accesses  (54.55%)
+         3,020,540      L1-dcache-stores                                              (37.75%)
+             3,287      LLC-load-misses                                               (37.75%)
+           197,552      branch-load-misses                                            (47.19%)
+           184,827      branch-misses                                                 (56.63%)
+           610,412      r2424                                                         (54.93%)
+
+       0.039239076 seconds time elapsed
+
+

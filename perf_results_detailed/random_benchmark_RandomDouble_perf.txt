@@ -1,0 +1,28 @@
+Benchmark: random_benchmark
+Unit: RandomDouble
+Throughput estimate: 2.82e+03 iters/s
+Target duration: 17.729s
+Actual elapsed: 0.198s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/random_benchmark --bm_pattern ^RandomDouble$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        34,640,323      cycles                                                        (21.02%)
+        33,188,736      instructions              #    0.96  insn per cycle           (41.00%)
+           929,097      L1-icache-load-misses                                         (51.03%)
+             4,001      iTLB-load-misses                                              (70.18%)
+         5,301,385      L1-dcache-loads                                               (89.17%)
+           176,997      L1-dcache-load-misses     #    3.34% of all L1-dcache accesses  (99.15%)
+           709,226      L1-dcache-stores                                              (49.91%)
+               100      LLC-load-misses                                               (29.90%)
+            84,464      branch-load-misses                                            (29.93%)
+            84,594      branch-misses                                                 (29.95%)
+           833,972      r2424                                                         (10.91%)
+
+       0.016998975 seconds time elapsed
+
+

@@ -1,0 +1,28 @@
+Benchmark: function_benchmark
+Unit: lambda_invoke_fn
+Throughput estimate: 5.18e+02 iters/s
+Target duration: 60.000s
+Actual elapsed: 0.202s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/function_benchmark --bm_pattern ^lambda_invoke_fn$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        31,320,805      cycles                                                        (18.55%)
+         9,214,782      instructions              #    0.29  insn per cycle           (39.17%)
+           880,119      L1-icache-load-misses                                         (51.62%)
+             3,773      iTLB-load-misses                                              (71.86%)
+         5,157,331      L1-dcache-loads                                               (91.40%)
+           170,113      L1-dcache-load-misses     #    3.30% of all L1-dcache accesses  (99.61%)
+         3,251,405      L1-dcache-stores                                              (48.87%)
+               216      LLC-load-misses                                               (28.22%)
+            86,502      branch-load-misses                                            (28.24%)
+            86,640      branch-misses                                                 (28.26%)
+           941,966      r2424                                                         (8.67%)
+
+       0.016539096 seconds time elapsed
+
+
