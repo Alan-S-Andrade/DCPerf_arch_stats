@@ -1,0 +1,28 @@
+Benchmark: VarintUtilsBench
+Unit: bench_write(u8_any_unrolled)
+Throughput estimate: 1.63e+06 iters/s
+Target duration: 0.050s
+Actual elapsed: 0.199s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/VarintUtilsBench --bm_pattern ^bench_write\(u8_any_unrolled\)$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        31,767,513      cycles                                                        (23.72%)
+        10,464,384      instructions              #    0.33  insn per cycle           (43.16%)
+           872,492      L1-icache-load-misses                                         (51.30%)
+             4,154      iTLB-load-misses                                              (69.13%)
+         5,991,028      L1-dcache-loads                                               (87.08%)
+           198,463      L1-dcache-load-misses     #    3.31% of all L1-dcache accesses  (98.37%)
+         4,827,928      L1-dcache-stores                                              (50.41%)
+             3,541      LLC-load-misses                                               (30.95%)
+           145,729      branch-load-misses                                            (30.97%)
+           145,819      branch-misses                                                 (30.99%)
+         1,119,479      r2424                                                         (13.00%)
+
+       0.016169718 seconds time elapsed
+
+

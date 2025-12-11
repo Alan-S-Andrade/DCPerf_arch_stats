@@ -1,0 +1,28 @@
+Benchmark: stats_digest_builder_benchmark
+Unit: append(10000x1)
+Throughput estimate: 1.05e+04 iters/s
+Target duration: 4.775s
+Actual elapsed: 0.220s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/stats_digest_builder_benchmark --bm_pattern ^append\(10000x1\)$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        29,887,766      cycles                                                        (57.83%)
+        21,000,243      instructions              #    0.70  insn per cycle           (68.37%)
+         1,189,316      L1-icache-load-misses                                         (68.36%)
+             7,657      iTLB-load-misses                                              (68.36%)
+         7,710,261      L1-dcache-loads                                               (68.39%)
+           285,201      L1-dcache-load-misses     #    3.70% of all L1-dcache accesses  (58.24%)
+         1,658,651      L1-dcache-stores                                              (42.20%)
+               507      LLC-load-misses                                               (42.19%)
+           123,007      branch-load-misses                                            (52.71%)
+           127,852      branch-misses                                                 (60.85%)
+           597,864      r2424                                                         (52.39%)
+
+       0.034988914 seconds time elapsed
+
+

@@ -1,0 +1,28 @@
+Benchmark: function_benchmark
+Unit: Function_move_small_trivial
+Throughput estimate: 3.54e+03 iters/s
+Target duration: 14.122s
+Actual elapsed: 0.188s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/function_benchmark --bm_pattern ^Function_move_small_trivial$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        33,693,797      cycles                                                        (21.15%)
+        31,112,609      instructions              #    0.92  insn per cycle           (41.36%)
+           935,266      L1-icache-load-misses                                         (51.50%)
+             3,858      iTLB-load-misses                                              (70.86%)
+         5,308,820      L1-dcache-loads                                               (89.01%)
+           177,124      L1-dcache-load-misses     #    3.34% of all L1-dcache accesses  (99.12%)
+           689,015      L1-dcache-stores                                              (49.47%)
+                71      LLC-load-misses                                               (29.22%)
+            87,398      branch-load-misses                                            (29.24%)
+            87,529      branch-misses                                                 (29.26%)
+           794,682      r2424                                                         (11.06%)
+
+       0.015237988 seconds time elapsed
+
+

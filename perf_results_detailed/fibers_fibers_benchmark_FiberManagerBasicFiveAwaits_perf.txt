@@ -1,0 +1,28 @@
+Benchmark: fibers_fibers_benchmark
+Unit: FiberManagerBasicFiveAwaits
+Throughput estimate: 1.02e+06 iters/s
+Target duration: 0.050s
+Actual elapsed: 0.219s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/fibers_fibers_benchmark --bm_pattern ^FiberManagerBasicFiveAwaits$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        33,911,202      cycles                                                        (56.36%)
+        33,076,588      instructions              #    0.98  insn per cycle           (67.26%)
+         1,221,021      L1-icache-load-misses                                         (67.26%)
+             7,430      iTLB-load-misses                                              (67.29%)
+         5,457,014      L1-dcache-loads                                               (67.31%)
+           277,456      L1-dcache-load-misses     #    5.08% of all L1-dcache accesses  (60.10%)
+         3,854,317      L1-dcache-stores                                              (43.65%)
+               834      LLC-load-misses                                               (43.64%)
+           125,638      branch-load-misses                                            (54.52%)
+           135,639      branch-misses                                                 (61.13%)
+           633,620      r2424                                                         (50.88%)
+
+       0.034655299 seconds time elapsed
+
+

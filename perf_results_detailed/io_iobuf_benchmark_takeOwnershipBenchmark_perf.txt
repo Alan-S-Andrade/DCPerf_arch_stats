@@ -1,0 +1,28 @@
+Benchmark: io_iobuf_benchmark
+Unit: takeOwnershipBenchmark
+Throughput estimate: 1.55e+04 iters/s
+Target duration: 3.218s
+Actual elapsed: 0.206s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/io_iobuf_benchmark --bm_pattern ^takeOwnershipBenchmark$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        30,901,047      cycles                                                        (21.02%)
+        26,306,403      instructions              #    0.85  insn per cycle           (40.88%)
+           956,603      L1-icache-load-misses                                         (50.24%)
+             3,984      iTLB-load-misses                                              (69.39%)
+         5,304,149      L1-dcache-loads                                               (88.73%)
+           173,441      L1-dcache-load-misses     #    3.27% of all L1-dcache accesses  (99.27%)
+           652,803      L1-dcache-stores                                              (50.58%)
+               185      LLC-load-misses                                               (30.69%)
+            80,808      branch-load-misses                                            (30.71%)
+            80,942      branch-misses                                                 (30.74%)
+           812,864      r2424                                                         (11.34%)
+
+       0.017142584 seconds time elapsed
+
+

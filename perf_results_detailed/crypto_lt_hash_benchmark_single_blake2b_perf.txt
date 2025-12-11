@@ -1,0 +1,28 @@
+Benchmark: crypto_lt_hash_benchmark
+Unit: single_blake2b
+Throughput estimate: 2.76e+05 iters/s
+Target duration: 0.181s
+Actual elapsed: 0.227s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/crypto_lt_hash_benchmark --bm_pattern ^single_blake2b$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        33,827,777      cycles                                                        (62.50%)
+        25,508,794      instructions              #    0.75  insn per cycle           (71.95%)
+         1,125,340      L1-icache-load-misses                                         (71.96%)
+             7,480      iTLB-load-misses                                              (71.96%)
+         6,419,037      L1-dcache-loads                                               (71.96%)
+           340,091      L1-dcache-load-misses     #    5.30% of all L1-dcache accesses  (54.51%)
+         3,221,032      L1-dcache-stores                                              (37.41%)
+             4,361      LLC-load-misses                                               (37.42%)
+           180,718      branch-load-misses                                            (46.78%)
+           171,330      branch-misses                                                 (56.15%)
+           548,464      r2424                                                         (54.89%)
+
+       0.039752063 seconds time elapsed
+
+

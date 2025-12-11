@@ -1,0 +1,28 @@
+Benchmark: io_async_event_base_benchmark
+Unit: timeMeasurementsOn
+Throughput estimate: 7.50e+05 iters/s
+Target duration: 0.067s
+Actual elapsed: 0.223s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/io_async_event_base_benchmark --bm_pattern ^timeMeasurementsOn$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        31,243,506      cycles                                                        (60.32%)
+        30,807,054      instructions              #    0.99  insn per cycle           (70.23%)
+         1,199,081      L1-icache-load-misses                                         (70.23%)
+             7,855      iTLB-load-misses                                              (70.24%)
+         5,084,845      L1-dcache-loads                                               (70.25%)
+           293,185      L1-dcache-load-misses     #    5.77% of all L1-dcache accesses  (55.13%)
+           768,542      L1-dcache-stores                                              (39.70%)
+               151      LLC-load-misses                                               (39.70%)
+           123,664      branch-load-misses                                            (49.62%)
+           124,544      branch-misses                                                 (59.31%)
+           569,663      r2424                                                         (54.86%)
+
+       0.037508456 seconds time elapsed
+
+

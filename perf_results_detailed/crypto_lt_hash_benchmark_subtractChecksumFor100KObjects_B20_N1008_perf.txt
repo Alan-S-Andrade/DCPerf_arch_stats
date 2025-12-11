@@ -1,0 +1,28 @@
+Benchmark: crypto_lt_hash_benchmark
+Unit: subtractChecksumFor100KObjects_B20_N1008
+Throughput estimate: 6.81e+11 iters/s
+Target duration: 0.050s
+Actual elapsed: 0.207s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/crypto_lt_hash_benchmark --bm_pattern ^subtractChecksumFor100KObjects_B20_N1008$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        28,106,486      cycles                                                        (23.34%)
+         9,105,488      instructions              #    0.32  insn per cycle           (42.61%)
+           886,555      L1-icache-load-misses                                         (50.24%)
+             4,010      iTLB-load-misses                                              (67.92%)
+         5,792,107      L1-dcache-loads                                               (86.73%)
+           183,334      L1-dcache-load-misses     #    3.17% of all L1-dcache accesses  (98.39%)
+         4,315,289      L1-dcache-stores                                              (51.45%)
+               743      LLC-load-misses                                               (32.16%)
+           107,354      branch-load-misses                                            (32.19%)
+           107,459      branch-misses                                                 (32.21%)
+           798,437      r2424                                                         (13.35%)
+
+       0.017892121 seconds time elapsed
+
+

@@ -1,0 +1,28 @@
+Benchmark: memset_benchmark
+Unit: folly::__folly_memset: size=1024
+Throughput estimate: 4.32e+03 iters/s
+Target duration: 11.580s
+Actual elapsed: 0.216s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/memset_benchmark --bm_pattern ^folly::__folly_memset:\ size=1024$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        32,117,109      cycles                                                        (54.88%)
+        31,390,332      instructions              #    0.98  insn per cycle           (66.14%)
+         1,159,305      L1-icache-load-misses                                         (66.13%)
+             7,459      iTLB-load-misses                                              (66.13%)
+         5,068,902      L1-dcache-loads                                               (66.16%)
+           250,589      L1-dcache-load-misses     #    4.94% of all L1-dcache accesses  (62.04%)
+         3,584,310      L1-dcache-stores                                              (45.19%)
+               668      LLC-load-misses                                               (45.16%)
+           120,352      branch-load-misses                                            (55.49%)
+           131,486      branch-misses                                                 (60.27%)
+           605,252      r2424                                                         (49.33%)
+
+       0.031818655 seconds time elapsed
+
+

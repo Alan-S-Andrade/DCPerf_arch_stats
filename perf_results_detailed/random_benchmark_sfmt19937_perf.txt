@@ -1,0 +1,28 @@
+Benchmark: random_benchmark
+Unit: sfmt19937
+Throughput estimate: 2.55e+02 iters/s
+Target duration: 60.000s
+Actual elapsed: 0.199s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/random_benchmark --bm_pattern ^sfmt19937$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        35,853,001      cycles                                                        (21.24%)
+        35,204,015      instructions              #    0.98  insn per cycle           (41.22%)
+           924,910      L1-icache-load-misses                                         (51.33%)
+             3,928      iTLB-load-misses                                              (70.43%)
+         5,266,184      L1-dcache-loads                                               (89.16%)
+           175,809      L1-dcache-load-misses     #    3.34% of all L1-dcache accesses  (99.08%)
+           718,862      L1-dcache-stores                                              (49.68%)
+               242      LLC-load-misses                                               (29.65%)
+            86,595      branch-load-misses                                            (29.67%)
+            86,727      branch-misses                                                 (29.69%)
+           835,653      r2424                                                         (10.91%)
+
+       0.016884807 seconds time elapsed
+
+

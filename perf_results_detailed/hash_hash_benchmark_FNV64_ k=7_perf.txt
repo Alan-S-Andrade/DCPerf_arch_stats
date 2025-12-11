@@ -1,0 +1,28 @@
+Benchmark: hash_hash_benchmark
+Unit: FNV64: k=7
+Throughput estimate: 8.16e+03 iters/s
+Target duration: 6.124s
+Actual elapsed: 0.231s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/hash_hash_benchmark --bm_pattern ^FNV64:\ k=7$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        62,337,893      cycles                                                        (63.70%)
+       100,054,715      instructions              #    1.61  insn per cycle           (73.56%)
+         1,083,436      L1-icache-load-misses                                         (73.56%)
+             7,752      iTLB-load-misses                                              (73.57%)
+        13,191,616      L1-dcache-loads                                               (73.58%)
+           338,318      L1-dcache-load-misses     #    2.56% of all L1-dcache accesses  (55.95%)
+         9,782,306      L1-dcache-stores                                              (35.26%)
+               590      LLC-load-misses                                               (35.25%)
+           172,993      branch-load-misses                                            (44.07%)
+           166,248      branch-misses                                                 (52.90%)
+           491,370      r2424                                                         (52.90%)
+
+       0.043158024 seconds time elapsed
+
+

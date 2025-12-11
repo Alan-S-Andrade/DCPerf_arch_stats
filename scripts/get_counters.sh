@@ -1,0 +1,1 @@
+sudo perf stat -a -e cycles,instructions,L1-icache-load-misses,iTLB-loads,iTLB-load-misses,L1-dcache-loads,L1-dcache-load-misses,L1-dcache-stores,LLC-load-misses,branch-load-misses,branch-misses, r2424 -o $mb_name --sleep $mb_duration

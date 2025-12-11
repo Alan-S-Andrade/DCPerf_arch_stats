@@ -1,0 +1,28 @@
+Benchmark: function_benchmark
+Unit: scope_guard_lambda_function
+Throughput estimate: 5.18e+02 iters/s
+Target duration: 60.000s
+Actual elapsed: 0.204s
+
+Command: /users/alanuiuc/DCPerf/benchmarks/wdl_bench/function_benchmark --bm_pattern ^scope_guard_lambda_function$
+
+Perf output:
+ERROR: unknown command line flag 'bm_pattern'
+
+ Performance counter stats for 'system wide':
+
+        32,049,718      cycles                                                        (21.31%)
+        26,516,418      instructions              #    0.83  insn per cycle           (41.11%)
+           982,182      L1-icache-load-misses                                         (50.22%)
+             4,011      iTLB-load-misses                                              (69.16%)
+         5,520,228      L1-dcache-loads                                               (88.39%)
+           190,766      L1-dcache-load-misses     #    3.46% of all L1-dcache accesses  (99.12%)
+           829,003      L1-dcache-stores                                              (50.76%)
+             2,059      LLC-load-misses                                               (30.92%)
+           122,613      branch-load-misses                                            (30.94%)
+           122,712      branch-misses                                                 (30.97%)
+           918,910      r2424                                                         (11.69%)
+
+       0.017185831 seconds time elapsed
+
+
