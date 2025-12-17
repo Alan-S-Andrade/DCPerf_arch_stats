@@ -54,6 +54,14 @@ def process_file(input_path: Path, output_path: Path) -> bool:
                 f.write("\n".join(out_lines))
             
             print(f"Wrote {output_path}")
+            
+            # Delete the source .data file after successful disassembly
+            try:
+                input_path.unlink()
+                print(f"Deleted source file: {input_path}")
+            except Exception as e:
+                print(f"Warning: Failed to delete {input_path}: {e}")
+            
             return True
         except FileNotFoundError:
             print(f"Output file not created: {output_path}")
@@ -104,6 +112,20 @@ def main():
 
         out_name = f.stem + "_dis.data"
         out_path = out_dir / out_name
+        
+        # Check if the disassembled output already exists
+        if out_path.exists():
+            file_size = out_path.stat().st_size
+            if file_size > 0:
+                print(f"SKIP: {out_path} already exists with {file_size} bytes")
+                continue
+            else:
+                # Delete empty file and proceed
+                try:
+                    out_path.unlink()
+                    print(f"Deleted empty file: {out_path}")
+                except Exception as e:
+                    print(f"Warning: Failed to delete empty {out_path}: {e}")
 
         if args.dry_run:
             print(f"DRY-RUN: {f} -> {out_path}")

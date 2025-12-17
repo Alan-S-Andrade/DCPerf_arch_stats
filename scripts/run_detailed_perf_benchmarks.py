@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import List, Dict, Set, Tuple, Optional
 import argparse
 import tempfile
+import pickle
 
 class FollyBenchmarkPerfRunner:
     """Run folly benchmark units with perf stat measurements."""
@@ -30,53 +31,71 @@ class FollyBenchmarkPerfRunner:
         
         self.benchmarks = {}  # benchmark_name -> binary_path
         self.benchmark_configs = {}  # benchmark_name -> config_string
+        self.checkpoint_file = self.output_dir / ".resume_checkpoint.pkl"
+        self.completed_work = self._load_checkpoint()
         self.discover_benchmarks()
     
+    def _load_checkpoint(self) -> Set[str]:
+        """Load the set of completed (benchmark, unit) pairs from checkpoint."""
+        if self.checkpoint_file.exists():
+            try:
+                with open(self.checkpoint_file, 'rb') as f:
+                    completed = pickle.load(f)
+                    print(f"Loaded checkpoint: {len(completed)} completed work items")
+                    return completed
+            except Exception as e:
+                print(f"Warning: Failed to load checkpoint: {e}. Starting fresh.")
+        return set()
+
+    def _save_checkpoint(self):
+        """Save the set of completed work to checkpoint file."""
+        try:
+            with open(self.checkpoint_file, 'wb') as f:
+                pickle.dump(self.completed_work, f)
+        except Exception as e:
+            print(f"Warning: Failed to save checkpoint: {e}")
+
+    def _mark_completed(self, benchmark_name: str, unit_name: str):
+        """Mark a benchmark/unit pair as completed and save checkpoint."""
+        work_key = f"{benchmark_name}::{unit_name}"
+        self.completed_work.add(work_key)
+        self._save_checkpoint()
+
+    def _is_completed(self, benchmark_name: str, unit_name: str) -> bool:
+        """Check if a benchmark/unit pair has already been processed."""
+        work_key = f"{benchmark_name}::{unit_name}"
+        return work_key in self.completed_work
+
     def discover_benchmarks(self):
         """Discover all benchmark binaries in the wdl_bench directory."""
-        
         print(f"Scanning for benchmark binaries...")
-        
-        # Try multiple paths to find benchmarks
+
         possible_paths = [
-            Path("/users/alanuiuc/DCPerf/benchmarks/wdl_bench"),
-            Path("/users/alanuiuc/DCPerf/benchmarks/wdl_bench/wdl_build/build/folly"),
-            Path("/users/alanuiuc/DCPerf/benchmarks/wdl_bench/wdl_build"),
-            self.folly_test_dir.parent.parent.parent.parent / "wdl_build",
-            Path.cwd() / "wdl_build",
-            Path.cwd().parent / "wdl_build",
+            Path("/proj/alanfaascache-PG0/DC2/DCPerf/benchmarks/wdl_bench"),
         ]
-        
+
         wdl_build_base = None
         for path in possible_paths:
             if path.exists():
-                # Check if this path has actual benchmark binaries
                 test_files = list(path.glob("memcpy_benchmark")) + list(path.glob("*benchmark"))
                 if test_files:
                     wdl_build_base = path
-                    print(f"  Found benchmarks at: {wdl_build_base}")
                     break
-        
+
         if wdl_build_base is None:
-            print(f"  Warning: No benchmark directory found")
-            print(f"  Searched in:")
+            print("No benchmark directory found. Searched:")
             for p in possible_paths:
-                print(f"    - {p}")
+                print(f"  - {p}")
             return
-        
-        found_count = 0
+        print(f"Found benchmark base: {wdl_build_base}")
+        print("Scanning for executables in:", wdl_build_base)
+
         for binary in sorted(wdl_build_base.glob("*")):
             if binary.is_file() and os.access(binary, os.X_OK):
-                bench_name = binary.name
-                # Filter to likely benchmarks
-                if any(p in bench_name.lower() for p in ['benchmark', 'bench', 'perf']):
-                    self.benchmarks[bench_name] = binary
-                    found_count += 1
-                    print(f"  Found: {bench_name}")
-        
-        if found_count == 0:
-            print(f"  No executable benchmark binaries found in {wdl_build_base}")
-            print(f"  Check with: ls -la {wdl_build_base}")
+                name = binary.name
+                if any(p in name.lower() for p in ["benchmark", "bench", "perf"]):
+                    self.benchmarks[name] = binary
+                    print(f"Discovered benchmark binary: {name} -> {binary}")
     
     def run_benchmark_get_units(self, benchmark_name: str) -> Dict[str, float]:
         """Run benchmark and extract unit names with their estimated throughput.
@@ -86,47 +105,100 @@ class FollyBenchmarkPerfRunner:
         
         if benchmark_name not in self.benchmarks:
             return {}
-        
+
         benchmark_binary = self.benchmarks[benchmark_name]
         benchmark_dir = benchmark_binary.parent
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_output = Path(tmpdir) / "output.json"
-            
+
+        print(f"\n{'='*70}")
+        print(f"Extracting units from: {benchmark_name}")
+        print(f"{'='*70}")
+
+        # 1) Prefer --bm_list if available, then probe each unit with --benchmark --bm_regex '^unit$'
+        try:
+            list_cmd = [str(benchmark_binary), "--bm_list"]
+            list_res = subprocess.run(
+                list_cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=benchmark_dir
+            )
+
+            stdout = (list_res.stdout or "").strip()
+            if stdout:
+                unit_lines = [l.strip() for l in stdout.splitlines() if l.strip()]
+                if unit_lines:
+                    print(f"  Found {len(unit_lines)} units via --bm_list")
+                    units: Dict[str, float] = {}
+                    for unit in unit_lines:
+                        print(f"  Probing unit: {unit}")
+                        probe_cmd = [str(benchmark_binary), "--benchmark", "--bm_regex", f'^{re.escape(unit)}$']
+                        try:
+                            p = subprocess.run(
+                                probe_cmd,
+                                capture_output=True,
+                                text=True,
+                                timeout=30,
+                                cwd=benchmark_dir
+                            )
+
+                            # Try to parse textual output for throughput
+                            parsed = self._extract_units_from_text(p.stdout)
+                            if parsed:
+                                # Prefer a parsed key that matches the unit name
+                                matched = None
+                                for k in parsed.keys():
+                                    if unit in k or k in unit:
+                                        matched = k
+                                        break
+                                if matched is None:
+                                    matched = next(iter(parsed.keys()))
+                                units[unit] = parsed.get(matched, 1e6)
+                            else:
+                                # Fallback estimate
+                                units[unit] = 1e6
+                        except subprocess.TimeoutExpired:
+                            print(f"    probe timed out for unit: {unit}")
+                            units[unit] = 1e6
+                        except Exception as e:
+                            print(f"    probe error for unit {unit}: {e}")
+                            units[unit] = 1e6
+
+                    print(f"  Probed {len(units)} units via --bm_list")
+                    return units
+
+        except subprocess.TimeoutExpired:
+            print("  --bm_list timed out; falling back")
+        except Exception as e:
+            print(f"  --bm_list failed: {e}; falling back")
+
+        # 2) Fallback: try --json (older behavior)
+        try:
             cmd = [str(benchmark_binary), "--json"]
-            
-            print(f"\n{'='*70}")
-            print(f"Extracting units from: {benchmark_name}")
-            print(f"{'='*70}")
-            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=benchmark_dir
+            )
+
+            units = {}
             try:
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                    cwd=benchmark_dir  # Run from benchmark directory
-                )
-                
-                units = {}
-                
-                # Try to parse JSON output
-                try:
-                    data = json.loads(result.stdout)
-                    units = self._extract_units_from_json(data)
-                except json.JSONDecodeError:
-                    # Try alternative parsing
-                    units = self._extract_units_from_text(result.stdout)
-                
-                print(f"Found {len(units)} benchmark units")
-                return units
-            
-            except subprocess.TimeoutExpired:
-                print(f"  Warning: Benchmark timed out")
-                return {}
-            except Exception as e:
-                print(f"  Error: {e}")
-                return {}
+                data = json.loads(result.stdout)
+                units = self._extract_units_from_json(data)
+            except json.JSONDecodeError:
+                units = self._extract_units_from_text(result.stdout)
+
+            print(f"Found {len(units)} benchmark units (fallback)")
+            return units
+
+        except subprocess.TimeoutExpired:
+            print(f"  Warning: Benchmark timed out")
+            return {}
+        except Exception as e:
+            print(f"  Error: {e}")
+            return {}
     
     def _extract_units_from_json(self, data: dict) -> Dict[str, float]:
         """Extract unit names and throughput from JSON data."""
@@ -199,6 +271,12 @@ class FollyBenchmarkPerfRunner:
         """
         
         benchmark_name = benchmark_binary.name
+        
+        # Check if already completed
+        if self._is_completed(benchmark_name, unit_name):
+            print(f"  {unit_name:<65} [SKIPPED - already completed]", flush=True)
+            return (True, "", 0.0)
+        
         benchmark_dir = benchmark_binary.parent
         safe_unit_name = re.sub(r'[/\\:*?"<>|]', '_', unit_name)
         
@@ -253,6 +331,8 @@ class FollyBenchmarkPerfRunner:
                 if result.stdout:
                     f.write(f"\nBenchmark output:\n{result.stdout}\n")
             
+            # Mark this work as completed
+            self._mark_completed(benchmark_name, unit_name)
             print(f"✓ ({elapsed:.2f}s)")
             return (True, str(perf_output_file), elapsed)
         
@@ -285,6 +365,8 @@ class FollyBenchmarkPerfRunner:
         total_start = time.time()
         summary = {}
         
+        print(f"\n=== Starting with {len(self.completed_work)} previously completed work items ===\n")
+        
         for benchmark_name in sorted(benchmarks_to_run.keys()):
             benchmark_binary = benchmarks_to_run[benchmark_name]
             
@@ -299,6 +381,7 @@ class FollyBenchmarkPerfRunner:
                 'total_units': len(units),
                 'successful': 0,
                 'failed': 0,
+                'skipped': 0,
                 'total_time': 0
             }
             
@@ -311,7 +394,10 @@ class FollyBenchmarkPerfRunner:
                 )
                 
                 benchmark_results['total_time'] += elapsed
-                if success:
+                if output_file == "":
+                    # Skipped (already completed)
+                    benchmark_results['skipped'] += 1
+                elif success:
                     benchmark_results['successful'] += 1
                 else:
                     benchmark_results['failed'] += 1
@@ -328,10 +414,13 @@ class FollyBenchmarkPerfRunner:
         total_units = 0
         total_success = 0
         total_failed = 0
+        total_skipped = 0
         
         for benchmark_name, results in summary.items():
             print(f"{benchmark_name}:")
             print(f"  Total units: {results['total_units']}")
+            if results['skipped']:
+                print(f"  Already completed: {results['skipped']}")
             print(f"  Successful: {results['successful']}")
             if results['failed']:
                 print(f"  Failed: {results['failed']}")
@@ -341,9 +430,12 @@ class FollyBenchmarkPerfRunner:
             total_units += results['total_units']
             total_success += results['successful']
             total_failed += results['failed']
+            total_skipped += results['skipped']
         
         print(f"{'='*70}")
         print(f"Total units measured: {total_success}/{total_units}")
+        if total_skipped:
+            print(f"Skipped (already done): {total_skipped}")
         if total_failed:
             print(f"Failed: {total_failed}")
         print(f"Total elapsed time: {total_elapsed/60:.1f} minutes ({total_elapsed:.0f}s)")
