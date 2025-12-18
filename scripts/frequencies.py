@@ -585,36 +585,36 @@ def write_pairs_csv(pairs_by_trace, output_dir):
 
 def write_frequency_distributions_csv(datasets: Dict[str, List[float]], output_dir: Path):
     """
-    Write a single CSV containing frequency distributions (normalized) for each dataset.
+    Write a single CSV containing percentile values (P10, P20, ..., P100) for each dataset.
 
-    The CSV header will be: "block size:", 0.1, 0.2, ..., 1.0
-    Each row: label, freq_bin_0.1, freq_bin_0.2, ..., freq_bin_1.0
+    The CSV header will be: "block size:", P10, P20, P30, P40, P50, P60, P70, P80, P90, P100
+    Each row: label, P10_value, P20_value, ..., P100_value
 
-    The values are computed by normalizing the data to [0,1] by dividing by the dataset max,
-    then counting the fraction of values whose normalized value falls into each 10%-wide bin.
+    The values are actual percentiles without normalization.
     """
     if not datasets:
         print("No datasets provided for frequency distributions.")
         return {}
 
-    bins = np.linspace(0.0, 1.0, 11)  # edges: 0.0 .. 1.0 (10 bins)
-    header_bins = [f"{bins[i+1]:.1f}" for i in range(len(bins)-1)]
+    header_percentiles = [f"P{i}" for i in range(10, 101, 10)]  # P10, P20, ..., P100
+    percentile_values = list(range(10, 101, 10))  # [10, 20, ..., 100]
 
     out_path = output_dir / "frequency_distributions.csv"
     freqs_out = {}
     with open(out_path, "w", newline="") as f:
         w = csv.writer(f)
         # First cell label to match requested format
-        w.writerow(["block size:"] + header_bins)
+        w.writerow(["block size:"] + header_percentiles)
 
         for label, values in sorted(datasets.items()):
-            freqs = np.percentile(np.array(values), [10,20,30,40,50,60,70,80,90,100])
             if not values:
-                freqs = [0.0 for _ in range(len(bins)-1)]
+                freqs = [0.0 for _ in range(len(percentile_values))]
+            else:
+                freqs = np.percentile(np.array(values), percentile_values)
 
             freqs_out[label] = freqs
-            # Write row: label + frequencies with 6-decimal precision
-            w.writerow([label] + [f"{x:.6f}" for x in freqs])
+            # Write row: label + percentile values with no decimal places (actual counts)
+            w.writerow([label] + [int(x) for x in freqs])
 
     print(f"Wrote combined frequency distributions CSV: {out_path}")
     return freqs_out
@@ -1154,22 +1154,6 @@ def main():
     # Write single combined CSV of frequency distributions and get computed freqs
     freqs_map = write_frequency_distributions_csv(combined_datasets, output_dir)
 
-    # Print per-family frequency distributions in the requested format
-    # Format: "arith: 0.1, 0.2, 0.3, ..."
-    if freqs_map:
-        print("\nFamily frequency distributions:")
-        for label, freqs in sorted(freqs_map.items()):
-            if not label.startswith("family::"):
-                continue
-            # label may be 'family::arith' or 'family::app::arith'
-            parts = label.split("::")
-            if len(parts) == 2:
-                fam_label = parts[1]
-            else:
-                fam_label = parts[-1]
-            freq_str = ", ".join([f"{x:.6f}" for x in freqs])
-            print(f"{fam_label}: {freq_str}")
-
     # Save large jumps summary
     if all_large_jumps:
         csv_path = output_dir / "large_jumps_over_100.csv"
@@ -1214,4 +1198,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
