@@ -389,14 +389,28 @@ def main():
             print(f"  no units found for {bench_name}")
             continue
         
+        # Create directory for this binary
+        bench_dir = out_dir / bench_name
+        bench_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Check if we already have all results
+        probe_cache_file = out_dir / f"{bench_name}_probe_times.txt"
+        if probe_cache_file.exists():
+            # Count lines in probe_times.txt
+            with open(probe_cache_file, 'r') as f:
+                probe_lines = len([l for l in f if l.strip()])
+            
+            # Count existing summary files in bench_dir
+            existing_summaries = list(bench_dir.glob("*_summary.csv"))
+            
+            if len(existing_summaries) == probe_lines and len(existing_summaries) == len(units):
+                print(f"  Found {len(existing_summaries)} existing summary files matching {probe_lines} probe times and {len(units)} units - skipping perfspect")
+                continue
+        
         # Save probe times to disk for this benchmark
         if probe_times:
             probe_file = discovery.save_probe_times(bench_name, probe_times)
             print(f"  Saved probe times to {probe_file.name}")
-
-        # Create directory for this binary
-        bench_dir = out_dir / bench_name
-        bench_dir.mkdir(parents=True, exist_ok=True)
 
         for unit_name, throughput in sorted(units.items()):
             safe_unit = safe_name(unit_name)
@@ -410,7 +424,8 @@ def main():
             if benchmark_type == 'generic':
                 bench_cmd = [str(bench_path)]
             else:
-                bench_cmd = [str(bench_path), '--bm_regex', f'^{re.escape(unit_name)}$']
+                regex_pattern = f"^{re.escape(unit_name)}$"
+                bench_cmd = [str(bench_path), '--bm_regex', regex_pattern]
 
             # Use actual probe time if available, otherwise estimate from throughput
             if unit_name in probe_times:
@@ -422,18 +437,13 @@ def main():
                 else:
                     # Legacy: just elapsed time
                     duration = probe_data
-                    cached_cmd = None
                     duration_source = "measured"
             else:
                 duration = discovery.calculate_measurement_duration(throughput, target_iterations=args.target_iters)
                 duration_source = "estimated"
-                cached_cmd = None
             
-            # Use cached command if available, otherwise build it
-            if cached_cmd:
-                perfspect_cmd = shlex.split(cached_cmd)
-            else:
-                perfspect_cmd = ["perfspect", "metrics"] + extra_args + ["--"] + bench_cmd
+            # Always build fresh command to ensure proper escaping (ignore cached_cmd)
+            perfspect_cmd = ["perfspect", "metrics"] + extra_args + ["--"] + bench_cmd
             
             # Build perfspect command with output flag
             # Insert --output before the benchmark command (before the "--")
