@@ -50,7 +50,7 @@ class BenchmarkDiscovery:
     def discover_benchmarks(self):
         """Scan for benchmark binaries in wdl_bench directory and configured paths."""
         possible_paths = [
-            Path("/proj/alanfaascache-PG0/DC2/DCPerf/benchmarks/wdl_bench")
+            Path("/myd/DCPerf/benchmarks/tiny_wdl_bench")
         ]
 
         wdl_build_base = None
@@ -96,19 +96,39 @@ class BenchmarkDiscovery:
                             self.benchmark_type[name] = 'generic'
                             print(f"Discovered generic benchmark: {name} -> {binary}")
 
-    def run_benchmark_get_units(self, benchmark_binary: Path) -> Dict[str, float]:
-        """Extract unit names and throughput estimates using --bm_list and --bm_regex.
+    def run_benchmark_get_units(self, benchmark_binary: Path) -> tuple:
+        """Extract unit names, throughput estimates, and probe times using --bm_list and --bm_regex.
 
-        For folly benchmarks: returns mapping unit_name -> throughput (iters/sec)
-        For generic binaries: returns single unit named after the binary
+        For folly benchmarks: returns (unit_dict, probe_times_dict) where:
+          - unit_dict: mapping unit_name -> throughput (iters/sec)
+          - probe_times_dict: mapping unit_name -> elapsed_time_in_seconds
+        For generic binaries: returns single unit with default values
         """
         benchmark_name = benchmark_binary.name
         benchmark_type = self.benchmark_type.get(benchmark_name, 'folly')
         benchmark_dir = benchmark_binary.parent
+        probe_times = {}  # Track elapsed time for each unit probe
 
         # For generic binaries, treat as single unit
         if benchmark_type == 'generic':
-            return {benchmark_name: 1e6}  # Default throughput estimate
+            return {benchmark_name: 1e6}, {}  # Default throughput estimate, no probe times
+        
+        # Try to load cached probe times first
+        cached_times = self.load_probe_times(benchmark_name)
+        if cached_times:
+            # Skip probing and use cached times
+            # Still get unit list but don't re-probe
+            list_cmd = [str(benchmark_binary), "--bm_list"]
+            try:
+                res = subprocess.run(list_cmd, capture_output=True, text=True, timeout=15, cwd=benchmark_dir)
+                if res.returncode == 0 and res.stdout and res.stdout.strip():
+                    unit_names = [l.strip() for l in res.stdout.splitlines() if l.strip()]
+                    units = {}
+                    for unit in unit_names:
+                        units[unit] = 1e6  # Default throughput estimate
+                    return units, cached_times
+            except subprocess.TimeoutExpired:
+                pass
 
         # For folly benchmarks, extract units
         # Primary path: use --bm_list to enumerate unit names
@@ -126,18 +146,31 @@ class BenchmarkDiscovery:
                     bm_cmd = [str(benchmark_binary), "--benchmark", "--bm_regex", f"^{re.escape(unit)}$"]
                     try:
                         print(f"    Probing unit '{unit}'")
+                        probe_start = time.time()
                         r2 = subprocess.run(bm_cmd, capture_output=True, text=True, timeout=20, cwd=benchmark_dir)
-                        parsed = self._extract_units_from_text(r2.stdout)
-                        if unit in parsed:
-                            units[unit] = parsed[unit]
-                        elif parsed:
-                            units[unit] = list(parsed.values())[0]
+                        probe_elapsed = time.time() - probe_start
+                        
+                        # Verify the unit ran successfully
+                        if r2.returncode == 0:
+                            # Build the perfspect command for this unit
+                            perfspect_cmd_str = ' '.join(["perfspect", "metrics", "--"] + bm_cmd)
+                            probe_times[unit] = (probe_elapsed, perfspect_cmd_str)
+                            
+                            parsed = self._extract_units_from_text(r2.stdout)
+                            if unit in parsed:
+                                units[unit] = parsed[unit]
+                            elif parsed:
+                                units[unit] = list(parsed.values())[0]
+                            else:
+                                units[unit] = 1e6
                         else:
-                            units[unit] = 1e6
+                            print(f"    Probe failed for unit '{unit}' (returncode {r2.returncode})")
                     except subprocess.TimeoutExpired:
                         print(f"    Probe timed out for unit '{unit}'")
+                        probe_elapsed = time.time() - probe_start
+                        probe_times[unit] = (probe_elapsed, None)
                         units[unit] = 1e6
-                return units
+                return units, probe_times
             print(f"  --bm_list produced no output; falling back to --json/text discovery")
         except subprocess.TimeoutExpired:
             print(f"  --bm_list timed out; falling back")
@@ -159,20 +192,20 @@ class BenchmarkDiscovery:
                 out_snip = "\n".join(out_lines[:30])
                 print(f"  No units parsed. stdout (first 30 lines):\n{out_snip}")
 
-            return units
+            return units, {}
         except subprocess.TimeoutExpired:
             print(f"  JSON discovery timed out; trying plain text fallback")
             try:
                 fallback = [str(benchmark_binary)]
                 result = subprocess.run(fallback, capture_output=True, text=True, timeout=15, cwd=benchmark_dir)
                 units = self._extract_units_from_text(result.stdout)
-                return units
+                return units, {}
             except Exception as e2:
                 print(f"  Fallback failed: {e2}")
-                return {}
+                return {}, {}
         except Exception as e:
             print(f"  Error discovering units: {e}")
-            return {}
+            return {}, {}
 
     def _extract_units_from_json(self, data: dict) -> Dict[str, float]:
         """Extract unit names and throughput from JSON data."""
@@ -246,6 +279,63 @@ class BenchmarkDiscovery:
         duration = target_iterations / throughput
         return max(0.05, min(60.0, duration))
 
+    def load_probe_times(self, benchmark_name: str) -> Dict[str, tuple]:
+        """Load cached probe times and commands from disk if they exist.
+        
+        Returns dict of unit_name -> (elapsed_seconds, command_list), or empty dict if not found.
+        """
+        if not hasattr(self, 'probe_cache_dir') or not self.probe_cache_dir:
+            return {}
+        
+        probe_file = self.probe_cache_dir / f"{benchmark_name}_probe_times.txt"
+        if not probe_file.exists():
+            return {}
+        
+        probe_times = {}
+        try:
+            with open(probe_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split(maxsplit=2)
+                    if len(parts) >= 2:
+                        unit_name = parts[0]
+                        try:
+                            elapsed = float(parts[1])
+                            # Command is optional (parts[2] if present)
+                            cmd = parts[2] if len(parts) > 2 else None
+                            probe_times[unit_name] = (elapsed, cmd)
+                        except ValueError:
+                            continue
+            if probe_times:
+                print(f"  Loaded cached probe times from {probe_file.name} ({len(probe_times)} units)")
+        except Exception as e:
+            print(f"  Error loading cached probe times: {e}")
+        
+        return probe_times
+
+    def save_probe_times(self, benchmark_name: str, probe_times: Dict[str, tuple]) -> Path:
+        """Save probe times and commands to disk as {bench_name}_probe_times.txt.
+        
+        probe_times should be dict of unit_name -> (elapsed_seconds, perfspect_command_str)
+        
+        Returns path to the saved file.
+        """
+        if not probe_times or not hasattr(self, 'probe_cache_dir') or not self.probe_cache_dir:
+            return None
+        
+        probe_file = self.probe_cache_dir / f"{benchmark_name}_probe_times.txt"
+        with open(probe_file, 'w') as f:
+            for unit_name in sorted(probe_times.keys()):
+                elapsed, cmd = probe_times[unit_name]
+                if cmd:
+                    f.write(f"{unit_name} {elapsed:.6f} {cmd}\n")
+                else:
+                    f.write(f"{unit_name} {elapsed:.6f}\n")
+        
+        return probe_file
+
 
 def main():
     p = argparse.ArgumentParser(description="Run perfspect metrics on discovered microbenchmark units")
@@ -257,7 +347,6 @@ def main():
                    help='Pattern to match binary names (e.g., "bench_bin_*", "*_bench", "test_*")')
     p.add_argument('--perfspect-bin', default='perfspect')
     p.add_argument('--perfspect-args', default='', help='Extra arguments to pass to perfspect metrics (as a shell string)')
-    p.add_argument('--perfspect-output', default='', help='Output path for perfspect results (passed as --output to perfspect metrics)')
     p.add_argument('--benchmark', help='Filter to a specific benchmark binary (partial match)')
     p.add_argument('--timeout-mult', type=float, default=3.0, help='Timeout multiplier for unit runs (duration * multiplier)')
     p.add_argument('--target-iters', type=int, default=50000, help='Target iterations used to estimate unit duration')
@@ -276,6 +365,9 @@ def main():
         additional_paths=args.additional_paths,
         binary_pattern=args.binary_pattern
     )
+    
+    # Set probe cache directory to output directory (persistent, not temp)
+    discovery.probe_cache_dir = out_dir
 
     # Filter benchmarks
     benchmarks = discovery.benchmarks
@@ -283,8 +375,7 @@ def main():
         benchmarks = {k: v for k, v in benchmarks.items() if args.benchmark.lower() in k.lower()}
 
     extra_args = shlex.split(args.perfspect_args) if args.perfspect_args else []
-    if args.perfspect_output:
-        extra_args.extend(["--output", args.perfspect_output])
+    extra_args.extend(["--output", "perfspect_results"])
 
     summary = {}
     total_start = time.time()
@@ -293,16 +384,27 @@ def main():
         bench_path = benchmarks[bench_name]
         print(f"\n== {bench_name} ==")
 
-        units = discovery.run_benchmark_get_units(bench_path)
+        units, probe_times = discovery.run_benchmark_get_units(bench_path)
         if not units:
             print(f"  no units found for {bench_name}")
             continue
+        
+        # Save probe times to disk for this benchmark
+        if probe_times:
+            probe_file = discovery.save_probe_times(bench_name, probe_times)
+            print(f"  Saved probe times to {probe_file.name}")
+
+        # Create directory for this binary
+        bench_dir = out_dir / bench_name
+        bench_dir.mkdir(parents=True, exist_ok=True)
 
         for unit_name, throughput in sorted(units.items()):
             safe_unit = safe_name(unit_name)
-            out_log = out_dir / f"{bench_name}_{safe_unit}_perfspect.log"
-            out_data = out_dir / f"{bench_name}_{safe_unit}_perfspect.txt"
-
+            # Create per-unit output directory
+            unit_out_dir = bench_dir / safe_unit
+            unit_out_dir.mkdir(parents=True, exist_ok=True)
+            out_log = bench_dir / f"{safe_unit}_perfspect.log"
+            
             # For generic binaries, run without --bm_regex; for folly use --bm_regex
             benchmark_type = discovery.benchmark_type.get(bench_name, 'folly')
             if benchmark_type == 'generic':
@@ -310,55 +412,102 @@ def main():
             else:
                 bench_cmd = [str(bench_path), '--bm_regex', f'^{re.escape(unit_name)}$']
 
-            # estimate duration and timeout
-            duration = discovery.calculate_measurement_duration(throughput, target_iterations=args.target_iters)
-            timeout = max(5.0, min(600.0, duration * args.timeout_mult))
+            # Use actual probe time if available, otherwise estimate from throughput
+            if unit_name in probe_times:
+                probe_data = probe_times[unit_name]
+                # probe_data is tuple of (elapsed_time, perfspect_cmd_str)
+                if isinstance(probe_data, tuple):
+                    duration, cached_cmd = probe_data
+                    duration_source = "measured"
+                else:
+                    # Legacy: just elapsed time
+                    duration = probe_data
+                    cached_cmd = None
+                    duration_source = "measured"
+            else:
+                duration = discovery.calculate_measurement_duration(throughput, target_iterations=args.target_iters)
+                duration_source = "estimated"
+                cached_cmd = None
+            
+            # Use cached command if available, otherwise build it
+            if cached_cmd:
+                perfspect_cmd = shlex.split(cached_cmd)
+            else:
+                perfspect_cmd = ["perfspect", "metrics"] + extra_args + ["--"] + bench_cmd
+            
+            # Build perfspect command with output flag
+            # Insert --output before the benchmark command (before the "--")
+            dash_idx = None
+            for i, arg in enumerate(perfspect_cmd):
+                if arg == "--":
+                    dash_idx = i
+                    break
+            
+            if dash_idx is not None:
+                # Insert --output before the "--" separator
+                perfspect_cmd_with_output = perfspect_cmd[:dash_idx] + ["--output", str(unit_out_dir)] + perfspect_cmd[dash_idx:]
+            else:
+                # Fallback: append at end
+                perfspect_cmd_with_output = perfspect_cmd + ["--output", str(unit_out_dir)]
+            
+            duration_display = f"{duration:.3f}s ({duration_source})"
 
-            perfspect_cmd = ["perfspect", "metrics"] + extra_args + ["--"] + bench_cmd
-
-            print(f"  {unit_name:<60} duration~{duration:.3f}s timeout={timeout:.1f}s -> {out_log.name}")
+            print(f"  {unit_name:<60} duration~{duration_display} -> {bench_name}/{safe_unit}/_summary.csv")
+            print(f"  Command: {' '.join(perfspect_cmd_with_output)}")
 
             start = time.time()
             try:
                 proc = subprocess.run(
-                    perfspect_cmd,
+                    perfspect_cmd_with_output,
                     capture_output=True,
                     text=True,
-                    timeout=timeout,
                     cwd=bench_path.parent
                 )
 
                 elapsed = time.time() - start
+                
+                # Check if metric files were successfully created
+                metrics_found = "Metric files:" in proc.stdout or "Metric files:" in proc.stderr
+                ok = proc.returncode == 0 and metrics_found
 
                 with open(out_log, 'w') as f:
                     f.write(f"Benchmark: {bench_name}\n")
                     f.write(f"Type: {benchmark_type}\n")
                     f.write(f"Unit: {unit_name}\n")
                     f.write(f"Throughput_est: {throughput:.2e}\n")
-                    f.write(f"Timeout: {timeout}\n")
-                    f.write(f"Elapsed: {elapsed:.3f}\n\n")
-                    f.write("=== STDOUT ===\n")
+                    f.write(f"Duration: {duration:.3f}s ({duration_source})\n")
+                    f.write(f"Elapsed: {elapsed:.3f}\n")
+                    f.write(f"Status: {'SUCCESS' if ok else 'FAILED'}\n")
+                    if not metrics_found:
+                        f.write(f"Warning: No 'Metric files:' found in output\n")
+                    f.write("\n=== STDOUT ===\n")
                     f.write(proc.stdout or '')
                     f.write("\n=== STDERR ===\n")
                     f.write(proc.stderr or '')
 
-                # also save stdout-only data file for convenience
-                with open(out_data, 'w') as f:
-                    f.write(proc.stdout or '')
+                # Look for *_summary.csv files in unit_out_dir
+                summary_files = list(unit_out_dir.glob("*_summary.csv"))
+                if summary_files:
+                    # Move the summary file to bench_dir with microbenchmark name
+                    summary_csv_path = summary_files[0]
+                    final_summary = bench_dir / f"{safe_unit}_summary.csv"
+                    shutil.move(str(summary_csv_path), str(final_summary))
+                    # Delete the per-microbenchmark directory
+                    if unit_out_dir.exists():
+                        shutil.rmtree(unit_out_dir)
+                    ok = True
+                else:
+                    final_summary = None
+                    ok = False
 
-                ok = (proc.returncode == 0)
-            except subprocess.TimeoutExpired:
-                elapsed = time.time() - start
-                with open(out_log, 'w') as f:
-                    f.write(f"Timed out after {timeout}s\n")
-                ok = False
             except Exception as e:
                 with open(out_log, 'w') as f:
                     f.write(f"Error running perfspect: {e}\n")
                 ok = False
+                final_summary = None
 
             summary_key = f"{bench_name}::{unit_name}"
-            summary[summary_key] = {'ok': ok, 'log': str(out_log), 'data': str(out_data)}
+            summary[summary_key] = {'ok': ok, 'log': str(out_log), 'summary': str(final_summary) if final_summary else None}
 
     total_elapsed = time.time() - total_start
     print("\n=== Summary ===")
