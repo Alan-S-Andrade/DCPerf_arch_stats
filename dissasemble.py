@@ -2,18 +2,21 @@
 """
 Disassemble Intel PT `.data` files into instruction-trace text using perf script.
 
-For each `*.data` file found under --input-dir (non-recursive by default), this
-script runs:
+Takes a parent directory with subdirectories for each binary. Each binary 
+subdirectory contains multiple microbenchmark `.data` files. The script:
 
-  perf script --insn-trace --xed -i <file>
+  1. Iterates through each subdirectory (binary)
+  2. Finds all `.data` files (skips `.txt` files)
+  3. For each `.data` file, runs:
+     
+     perf script --insn-trace --xed -i <file>
+  
+  4. Filters lines containing "perf" from output and writes to `<basename>_dis.data`
+  5. Deletes the source `.data` file after successful disassembly
 
-and writes the output with lines containing the word "perf" removed to
-`<basename>_dis.data` in the output directory.
+Usage example:
 
-Usage examples:
-
-  python3 disassemble_pt_data.py --input-dir ./pt_records --output-dir ./pt_dis
-  python3 disassemble_pt_data.py --input-dir ./pt_records --recursive
+  python3 dissasemble.py --parent-dir ./pt_records --output-dir ./pt_dis
 
 This avoids using a shell pipeline by filtering in Python for portability.
 """
@@ -26,9 +29,9 @@ import shlex
 
 
 def process_file(input_path: Path, output_path: Path) -> bool:
-    # Escape parentheses in the input path for shell
-    escaped_input = str(input_path).replace('(', r'\(').replace(')', r'\)')
-    escaped_output = str(output_path).replace('(', r'\(').replace(')', r'\)')
+    # Properly quote paths for shell execution to handle spaces and special characters
+    escaped_input = shlex.quote(str(input_path))
+    escaped_output = shlex.quote(str(output_path))
     
     # Use timeout command with shell redirection
     cmd = f"timeout 4s perf script --insn-trace --xed -i {escaped_input} > {escaped_output}"
@@ -79,61 +82,75 @@ def process_file(input_path: Path, output_path: Path) -> bool:
 
 
 def main():
-    p = argparse.ArgumentParser(description="Disassemble Intel PT .data files to XED instruction traces")
-    p.add_argument("--input-dir", default="./pt_records", help="Directory containing .data files")
+    p = argparse.ArgumentParser(description="Disassemble Intel PT .data files from binary subdirectories")
+    p.add_argument("--parent-dir", default="./pt_records", help="Parent directory containing subdirectories for each binary")
     p.add_argument("--output-dir", default="./pt_dis", help="Directory to write disassembly outputs")
-    p.add_argument("--recursive", action="store_true", help="Search input-dir recursively for .data files")
-    p.add_argument("--pattern", default="*.data", help="Filename glob pattern to match data files")
     p.add_argument("--dry-run", action="store_true", help="Print files that would be processed, do not run perf")
 
     args = p.parse_args()
 
-    input_dir = Path(args.input_dir)
+    parent_dir = Path(args.parent_dir)
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if not input_dir.exists():
-        print(f"Input directory does not exist: {input_dir}")
+    if not parent_dir.exists():
+        print(f"Parent directory does not exist: {parent_dir}")
         sys.exit(1)
 
-    if args.recursive:
-        files = list(input_dir.rglob(args.pattern))
-    else:
-        files = list(input_dir.glob(args.pattern))
-
-    if not files:
-        print("No .data files found to process.")
+    # Iterate through subdirectories (one per binary)
+    binary_dirs = [d for d in parent_dir.iterdir() if d.is_dir()]
+    
+    if not binary_dirs:
+        print(f"No subdirectories found in {parent_dir}")
         return
 
-    for f in sorted(files):
-        # Skip files that already look like disassembled outputs
-        if f.name.endswith("_dis.data") or f.name.endswith(".error"):
-            continue
-
-        out_name = f.stem + "_dis.data"
-        out_path = out_dir / out_name
+    total_files = 0
+    for binary_dir in sorted(binary_dirs):
+        print(f"\nProcessing binary directory: {binary_dir.name}")
         
-        # Check if the disassembled output already exists
-        if out_path.exists():
-            file_size = out_path.stat().st_size
-            if file_size > 0:
-                print(f"SKIP: {out_path} already exists with {file_size} bytes")
-                continue
-            else:
-                # Delete empty file and proceed
-                try:
-                    out_path.unlink()
-                    print(f"Deleted empty file: {out_path}")
-                except Exception as e:
-                    print(f"Warning: Failed to delete empty {out_path}: {e}")
-
-        if args.dry_run:
-            print(f"DRY-RUN: {f} -> {out_path}")
+        # Find all .data files in this binary's directory, skip .txt files
+        data_files = [f for f in binary_dir.glob("*.data") if f.is_file()]
+        
+        if not data_files:
+            print(f"  No .data files found in {binary_dir}")
             continue
+        
+        print(f"  Found {len(data_files)} .data file(s)")
+        total_files += len(data_files)
+        
+        for f in sorted(data_files):
+            # Skip files that already look like disassembled outputs
+            if f.name.endswith("_dis.data") or f.name.endswith(".error"):
+                continue
 
-        ok = process_file(f, out_path)
-        # if not ok:
-        #     print(f"Failed to process: {f}")
+            out_name = f.stem + "_dis.data"
+            out_path = out_dir / out_name
+            
+            # Check if the disassembled output already exists
+            if out_path.exists():
+                file_size = out_path.stat().st_size
+                if file_size > 0:
+                    print(f"  SKIP: {out_path} already exists with {file_size} bytes")
+                    continue
+                else:
+                    # Delete empty file and proceed
+                    try:
+                        out_path.unlink()
+                        print(f"  Deleted empty file: {out_path}")
+                    except Exception as e:
+                        print(f"  Warning: Failed to delete empty {out_path}: {e}")
+
+            if args.dry_run:
+                print(f"  DRY-RUN: {f} -> {out_path}")
+                continue
+
+            ok = process_file(f, out_path)
+            # if not ok:
+            #     print(f"  Failed to process: {f}")
+    
+    if total_files == 0:
+        print("No .data files found to process in any subdirectory.")
+
 
 
 if __name__ == '__main__':

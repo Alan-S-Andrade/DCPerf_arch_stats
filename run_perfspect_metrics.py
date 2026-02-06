@@ -119,61 +119,55 @@ class BenchmarkDiscovery:
             # Skip probing and use cached times
             # Still get unit list but don't re-probe
             list_cmd = [str(benchmark_binary), "--bm_list"]
-            try:
-                res = subprocess.run(list_cmd, capture_output=True, text=True, timeout=15, cwd=benchmark_dir)
-                if res.returncode == 0 and res.stdout and res.stdout.strip():
-                    unit_names = [l.strip() for l in res.stdout.splitlines() if l.strip()]
-                    units = {}
-                    for unit in unit_names:
-                        units[unit] = 1e6  # Default throughput estimate
-                    return units, cached_times
-            except subprocess.TimeoutExpired:
-                pass
+            res = subprocess.run(list_cmd, capture_output=True, text=True, cwd=benchmark_dir)
+            if res.returncode == 0 and res.stdout and res.stdout.strip():
+                unit_names = [l.strip() for l in res.stdout.splitlines() if l.strip()]
+                units = {}
+                for unit in unit_names:
+                    units[unit] = 1e6  # Default throughput estimate
+                return units, cached_times
 
         # For folly benchmarks, extract units
         # Primary path: use --bm_list to enumerate unit names
         list_cmd = [str(benchmark_binary), "--bm_list"]
-        try:
-            print(f"  Running to list units: {' '.join(list_cmd)}")
-            res = subprocess.run(list_cmd, capture_output=True, text=True, timeout=15, cwd=benchmark_dir)
-            print(f"  List returncode: {res.returncode}")
-            units = {}
-            if res.returncode == 0 and res.stdout and res.stdout.strip():
-                unit_names = [l.strip() for l in res.stdout.splitlines() if l.strip()]
-                print(f"  Found {len(unit_names)} units via --bm_list")
-                for unit in unit_names:
-                    # Probe each unit with --benchmark --bm_regex
-                    bm_cmd = [str(benchmark_binary), "--benchmark", "--bm_regex", f"^{re.escape(unit)}$"]
-                    try:
-                        print(f"    Probing unit '{unit}'")
-                        probe_start = time.time()
-                        r2 = subprocess.run(bm_cmd, capture_output=True, text=True, timeout=20, cwd=benchmark_dir)
-                        probe_elapsed = time.time() - probe_start
+        print(f"  Running to list units: {' '.join(list_cmd)}")
+        res = subprocess.run(list_cmd, capture_output=True, text=True, cwd=benchmark_dir)
+        print(f"  List returncode: {res.returncode}")
+        units = {}
+        if res.returncode == 0 and res.stdout and res.stdout.strip():
+            unit_names = [l.strip() for l in res.stdout.splitlines() if l.strip()]
+            print(f"  Found {len(unit_names)} units via --bm_list")
+            for unit in unit_names:
+                # Probe each unit with --benchmark --bm_regex
+                bm_cmd = [str(benchmark_binary), "--benchmark", "--bm_regex", f"^{re.escape(unit)}$"]
+                try:
+                    print(f"    Probing unit '{unit}'")
+                    probe_start = time.time()
+                    r2 = subprocess.run(bm_cmd, capture_output=True, text=True, cwd=benchmark_dir)
+                    probe_elapsed = time.time() - probe_start
+                    
+                    # Verify the unit ran successfully
+                    if r2.returncode == 0:
+                        # Build the perfspect command for this unit
+                        perfspect_cmd_str = ' '.join(["perfspect", "metrics", "--"] + bm_cmd)
+                        probe_times[unit] = (probe_elapsed, perfspect_cmd_str)
                         
-                        # Verify the unit ran successfully
-                        if r2.returncode == 0:
-                            # Build the perfspect command for this unit
-                            perfspect_cmd_str = ' '.join(["perfspect", "metrics", "--"] + bm_cmd)
-                            probe_times[unit] = (probe_elapsed, perfspect_cmd_str)
-                            
-                            parsed = self._extract_units_from_text(r2.stdout)
-                            if unit in parsed:
-                                units[unit] = parsed[unit]
-                            elif parsed:
-                                units[unit] = list(parsed.values())[0]
-                            else:
-                                units[unit] = 1e6
+                        parsed = self._extract_units_from_text(r2.stdout)
+                        if unit in parsed:
+                            units[unit] = parsed[unit]
+                        elif parsed:
+                            units[unit] = list(parsed.values())[0]
                         else:
-                            print(f"    Probe failed for unit '{unit}' (returncode {r2.returncode})")
-                    except subprocess.TimeoutExpired:
-                        print(f"    Probe timed out for unit '{unit}'")
-                        probe_elapsed = time.time() - probe_start
-                        probe_times[unit] = (probe_elapsed, None)
-                        units[unit] = 1e6
-                return units, probe_times
-            print(f"  --bm_list produced no output; falling back to --json/text discovery")
-        except subprocess.TimeoutExpired:
-            print(f"  --bm_list timed out; falling back")
+                            units[unit] = 1e6
+                    else:
+                        print(f"    Probe failed for unit '{unit}' (returncode {r2.returncode})")
+                except subprocess.TimeoutExpired:
+                    print(f"    Probe timed out for unit '{unit}'")
+                    probe_elapsed = time.time() - probe_start
+                    probe_times[unit] = (probe_elapsed, None)
+                    units[unit] = 1e6
+            return units, probe_times
+        print(f"  --bm_list produced no output; falling back to --json/text discovery")
 
         # Fallback: try --json or plain run
         cmd = [str(benchmark_binary), "--json"]
@@ -375,7 +369,7 @@ def main():
         benchmarks = {k: v for k, v in benchmarks.items() if args.benchmark.lower() in k.lower()}
 
     extra_args = shlex.split(args.perfspect_args) if args.perfspect_args else []
-    extra_args.extend(["--output", "perfspect_results"])
+    # Don't add --output here; we'll add it per microbenchmark
 
     summary = {}
     total_start = time.time()
@@ -384,28 +378,60 @@ def main():
         bench_path = benchmarks[bench_name]
         print(f"\n== {bench_name} ==")
 
-        units, probe_times = discovery.run_benchmark_get_units(bench_path)
-        if not units:
-            print(f"  no units found for {bench_name}")
-            continue
-        
         # Create directory for this binary
         bench_dir = out_dir / bench_name
         bench_dir.mkdir(parents=True, exist_ok=True)
         
-        # Check if we already have all results
+        # Check if we have cached probe times - if so, use them and skip probing
         probe_cache_file = out_dir / f"{bench_name}_probe_times.txt"
+        units = {}
+        probe_times = {}
+        
         if probe_cache_file.exists():
-            # Count lines in probe_times.txt
+            # Load cached probe times and extract units from it
+            # Format: unit_name elapsed_time perfspect_command
+            # Note: unit_name can have spaces, so split from the right
             with open(probe_cache_file, 'r') as f:
-                probe_lines = len([l for l in f if l.strip()])
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    # Split by "perfspect" to separate unit+duration from command
+                    if ' perfspect ' not in line:
+                        continue
+                    
+                    unit_and_duration, cmd_part = line.split(' perfspect ', 1)
+                    # The last token in unit_and_duration is the elapsed time
+                    tokens = unit_and_duration.rsplit(maxsplit=1)
+                    if len(tokens) != 2:
+                        continue
+                    
+                    unit_name = tokens[0]
+                    try:
+                        elapsed = float(tokens[1])
+                        cmd = f"perfspect {cmd_part}"
+                        units[unit_name] = 1e6  # Default throughput estimate
+                        probe_times[unit_name] = (elapsed, cmd)
+                    except ValueError:
+                        continue
+            
+            print(f"  Loaded {len(units)} cached units from probe times")
             
             # Count existing summary files in bench_dir
             existing_summaries = list(bench_dir.glob("*_summary.csv"))
             
-            if len(existing_summaries) == probe_lines and len(existing_summaries) == len(units):
-                print(f"  Found {len(existing_summaries)} existing summary files matching {probe_lines} probe times and {len(units)} units - skipping perfspect")
+            if len(existing_summaries) == len(units):
+                print(f"  Found all {len(existing_summaries)} summary files - skipping perfspect")
                 continue
+            else:
+                print(f"  Found {len(existing_summaries)} summary files but have {len(units)} units - will re-run")
+        else:
+            # No cache - probe normally
+            units, probe_times = discovery.run_benchmark_get_units(bench_path)
+        
+        if not units:
+            print(f"  no units found for {bench_name}")
+            continue
         
         # Save probe times to disk for this benchmark
         if probe_times:
@@ -425,7 +451,8 @@ def main():
                 bench_cmd = [str(bench_path)]
             else:
                 regex_pattern = f"^{re.escape(unit_name)}$"
-                bench_cmd = [str(bench_path), '--bm_regex', regex_pattern]
+                # Wrap pattern in double quotes for shell execution
+                bench_cmd = [str(bench_path), '--bm_regex', f'"{regex_pattern}"']
 
             # Use actual probe time if available, otherwise estimate from throughput
             if unit_name in probe_times:

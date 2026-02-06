@@ -1,25 +1,24 @@
 #!/usr/bin/env python3
 """
-Compute:
-  1) CDFs of absolute jump/branch target distances across traces
-  2) Scatter plots of jump size vs. preceding block length
-  3) For a SINGLE app (--familyApp NAME):
-       - Multi-curve CDF of instruction-family counts per basic block
-       - Stacked bar of average per-block family composition
-  4) NEW: CDFs of Read-After-Write (RAW) dependency distances across traces
+Compute CDF distributions for Intel PT disassembled traces.
+
+Processing flow:
+  1. Iterate through binary subdirectories in the parent input directory
+  2. For each disassembled microbenchmark trace file:
+     - Parse instructions and group into basic blocks
+     - Compute: block sizes, jump sizes, RAW dependency distances, branch run lengths
+     - Compute instruction family breakdown
+     - Generate percentile values (10th through 100th percentile) for each metric
+     - Output a single CSV file with all distributions: {microbenchmark}_percentiles.csv
 
 Usage:
-  python3 trace_jump_cdf_abs_log.py -i traces/ -o results/ [--kernelSpace] [--familyApp NAME]
-
-Input lines (perf script disassembly style), e.g.:
-   hhvmworker 1637979 [001] 450361.144668968:      7c6a49b64cc0 pcre_exec+0x0 (/usr/lib/x86_64-linux-gnu/libpcre.so.3.13.3)         nop %edi, %edx
+  python3 frequencies.py -i /path/to/parent_dir -o /path/to/output_dir
 """
 
 import re
 import csv
 from collections import Counter, defaultdict
 import argparse
-import matplotlib.pyplot as plt
 from pathlib import Path
 import numpy as np
 from typing import Tuple, Set, Dict, List, Optional
@@ -27,9 +26,6 @@ from typing import Tuple, Set, Dict, List, Optional
 # -----------------------------
 # Parsing & classification
 # -----------------------------
-
-OUT_DIR = Path("wdl_out")
-OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 class Instruction:
     def __init__(self, process, pid, cpu, timestamp, address, function, binary, instruction):
@@ -43,11 +39,7 @@ class Instruction:
         self.instruction = instruction
 
 def write_percentile_table(prefix: str, data_dict: Dict[str, List[int]], output_dir: Path):
-    """
-    Write percentile tables (10th .. 100th percentile) for each key in data_dict.
-    Saves: <output_dir>/<prefix>_<key>_percentiles.csv
-    """
-    percentiles = [i / 10.0 for i in range(1, 11)]  # 0.1, 0.2, ... 1.0
+    percentiles = [i / 10.0 for i in range(1, 11)]
 
     for key, values in data_dict.items():
         if not values:
@@ -70,8 +62,6 @@ def write_percentile_table(prefix: str, data_dict: Dict[str, List[int]], output_
             w.writerow(["Percentile", "Value"])
             for p, v in zip(percentiles, pct_vals):
                 w.writerow([p, v])
-
-        print(f"Wrote {path}")
 
 def parse_line(line) -> Optional[Instruction]:
     if "instruction trace error" in line:
@@ -301,7 +291,6 @@ def plot_cdfs_taken_not_taken(run_dict, title, out_path):
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
     plt.close()
-    print(f"Wrote {out_path}")
 
 def compute_jump_sizes_with_blocklens(blocks):
     """
@@ -322,17 +311,7 @@ def compute_jump_sizes_with_blocklens(blocks):
         block_lens.append(src_len)
         pairs.append((src_len, diff))
     return jump_sizes, block_lens, pairs
-
-def print_large_jumps(jump_sizes, threshold=0x100):
-    large = [(i, j) for i, j in enumerate(jump_sizes) if j > threshold]
-    if not large:
-        return []
-    print(f"\n[+] Found {len(large)} large jumps (> 0x{threshold:x}):")
-    for idx, dist in large[:50]:
-        print(f"  Jump #{idx}: deltaVA = {dist} ({hex(dist)})")
-    return large
-
-# -----------------------------
+#-------------------------
 # Family counts per block (single app)
 # -----------------------------
 
@@ -378,64 +357,7 @@ def compute_cdf(data):
     y = np.arange(1, n + 1) / n
     return data, y
 
-def plot_jump_cdfs(jump_dict, output_dir, kernel_space):
-    # Linear CDF
-    plt.figure(figsize=(9, 6))
-    for label, jumps in jump_dict.items():
-        if not jumps:
-            continue
-        x, y = compute_cdf(jumps)
-        plt.plot(x, y, label=label, linewidth=2)
-    plt.xlabel("Absolute Jump Size (VA difference)")
-    plt.ylabel("CDF")
-    plt.title(f"CDF of Jump/Branch Target Sizes ({'Kernel' if kernel_space else 'User'}-Space)")
-    plt.grid(True, linestyle="--", alpha=0.6)
-    plt.legend()
-    plt.tight_layout()
-    path = output_dir / "jump_cdf_abs_full.png"
-    plt.savefig(path, dpi=150)
-    print(f"Wrote {path}")
-    plt.close()
 
-    # Log-X CDF
-    plt.figure(figsize=(9, 6))
-    for label, jumps in jump_dict.items():
-        if not jumps:
-            continue
-        x, y = compute_cdf(jumps)
-        plt.plot(x, y, label=label, linewidth=2)
-    plt.xscale("log")
-    plt.xlabel("Absolute Jump Size (log scale)")
-    plt.ylabel("CDF")
-    plt.title(f"CDF of Jump/Branch Target Sizes (log-x, {'Kernel' if kernel_space else 'User'}-Space)")
-    plt.grid(True, which="both", linestyle="--", alpha=0.6)
-    plt.legend()
-    plt.tight_layout()
-    path = output_dir / "jump_cdf_abs_logx.png"
-    plt.savefig(path, dpi=150)
-    print(f"Wrote {path}")
-    plt.close()
-
-    # Zoomed tail
-    plt.figure(figsize=(9, 6))
-    for label, jumps in jump_dict.items():
-        if not jumps:
-            continue
-        x, y = compute_cdf(jumps)
-        plt.plot(x, y, label=label, linewidth=2)
-    plt.xscale("log")
-    plt.ylim(0.8, 1.0)
-    plt.yticks([0.8, 0.9, 1.0])
-    plt.xlabel("Absolute Jump Size (log scale)")
-    plt.ylabel("CDF")
-    plt.title(f"Zoomed Upper Tail CDF ({'Kernel' if kernel_space else 'User'}-Space)")
-    plt.grid(True, which="both", linestyle="--", alpha=0.6)
-    plt.legend()
-    plt.tight_layout()
-    path = output_dir / "jump_cdf_abs_zoomed.png"
-    plt.savefig(path, dpi=150)
-    print(f"Wrote {path}")
-    plt.close()
 
 # def plot_jump_vs_blocklen_scatter(pairs_by_trace, output_dir, kernel_space):
 #     # Combined
@@ -481,143 +403,52 @@ def plot_jump_cdfs(jump_dict, output_dir, kernel_space):
 
 # ---- New: Family CDFs (single app) ----
 
-def plot_family_cdfs_single_app(app_label, family_lists, output_dir):
-    """
-    family_lists: dict[family] -> list[count_per_block]
-    Plots multi-curve CDF where each curve is the CDF of that family's counts per basic block.
-    """
-    plt.figure(figsize=(9, 6))
-    for family, counts in sorted(family_lists.items()):
-        if not counts:
-            continue
-        x, y = compute_cdf(counts)
-        plt.plot(x, y, linewidth=2, label=family)
-    plt.xlabel("Per-Block Count")
-    plt.ylabel("CDF")
-    plt.title(f"Instruction type Counts per Block — CDFs ({app_label})")
-    plt.grid(True, linestyle="--", alpha=0.6)
-    plt.legend()
-    plt.tight_layout()
-    out = output_dir / f"{app_label}_family_counts_per_block_cdfs.png"
-    plt.savefig(out, dpi=150)
-    print(f"Wrote {out}")
-    plt.close()
 
-# ---- New: Stacked bar for average per-block composition (single app) ----
 
-def plot_family_stacked_bar_single_app(app_label, family_lists, output_dir):
-    """
-    Build a single stacked bar where each segment is the mean fraction of that family per block.
-    """
-    families = sorted(family_lists.keys())
-    num_blocks = len(next(iter(family_lists.values()))) if families else 0
-    if num_blocks == 0:
-        print("No blocks for stacked bar.")
-        return
 
-    per_family_avg_fraction = {f: 0.0 for f in families}
-
-    for b in range(num_blocks):
-        total = sum(family_lists[f][b] for f in families)
-        if total == 0:
-            continue
-        for f in families:
-            per_family_avg_fraction[f] += family_lists[f][b] / total
-
-    for f in families:
-        per_family_avg_fraction[f] /= max(1, num_blocks)
-
-    plt.figure(figsize=(7, 5))
-    bottom = 0.0
-    x = [0]
-    for f in families:
-        h = per_family_avg_fraction[f]
-        plt.bar(x, [h], bottom=bottom, label=f, width=0.5)
-        bottom += h
-
-    plt.xticks([0], [app_label])
-    plt.ylim(0, 1)
-    plt.ylabel("Average fraction per block")
-    plt.title(f"Average Instruction type distribution per Block — {app_label}")
-    plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0.)
-    plt.tight_layout()
-    out = output_dir / f"{app_label}_family_composition_stacked_bar.png"
-    plt.savefig(out, dpi=150)
-    print(f"Wrote {out}")
-    plt.close()
-
-def write_family_counts_csv_single_app(app_label, per_block_counts, output_dir):
-    families = sorted({f for c in per_block_counts for f in c})
-    path = output_dir / f"{app_label}_family_counts_per_block.csv"
-    with open(path, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["Block_Index"] + families)
-        for i, c in enumerate(per_block_counts):
-            w.writerow([i] + [c.get(f, 0) for f in families])
-    print(f"Wrote {path}")
-
-# -----------------------------
 # CSV helpers
-# -----------------------------
 
-def write_pairs_csv(pairs_by_trace, output_dir):
-    combined_rows = []
-    for label, pairs in pairs_by_trace.items():
-        if not pairs:
-            continue
-        per_path = output_dir / f"jump_vs_blocklen_{label}.csv"
-        with open(per_path, "w", newline="") as f:
-            w = csv.writer(f)
-            w.writerow(["Block_Index", "Block_Len", "Next_Jump_Size"])
-            for i, (blen, jsize) in enumerate(pairs):
-                w.writerow([i, blen, jsize])
-                combined_rows.append([label, i, blen, jsize])
-        print(f"Wrote {per_path}")
-
-    if combined_rows:
-        all_path = output_dir / "jump_vs_blocklen_all.csv"
-        with open(all_path, "w", newline="") as f:
-            w = csv.writer(f)
-            w.writerow(["Trace", "Block_Index", "Block_Len", "Next_Jump_Size"])
-            w.writerows(combined_rows)
-        print(f"Wrote {all_path}")
-
-
-def write_frequency_distributions_csv(datasets: Dict[str, List[float]], output_dir: Path):
+def write_microbenchmark_distributions_csv(mb_label: str, datasets: Dict[str, List[float]], output_dir: Path) -> bool:
     """
-    Write a single CSV containing percentile values (P10, P20, ..., P100) for each dataset.
-
-    The CSV header will be: "block size:", P10, P20, P30, P40, P50, P60, P70, P80, P90, P100
-    Each row: label, P10_value, P20_value, ..., P100_value
-
-    The values are actual percentiles without normalization.
+    Write a single CSV with percentile distributions for one microbenchmark.
+    
+    Format:
+      metric_type, P10, P20, P30, P40, P50, P60, P70, P80, P90, P100
+      block_sizes, val, val, ...
+      jumps, val, val, ...
+      raw_deps, val, val, ...
+      taken_runs, val, val, ...
+      not_taken_runs, val, val, ...
+      family::*, val, val, ...
+    
+    Returns True if successful, False otherwise.
     """
     if not datasets:
-        print("No datasets provided for frequency distributions.")
-        return {}
+        return False
 
     header_percentiles = [f"P{i}" for i in range(10, 101, 10)]  # P10, P20, ..., P100
     percentile_values = list(range(10, 101, 10))  # [10, 20, ..., 100]
 
-    out_path = output_dir / "frequency_distributions.csv"
-    freqs_out = {}
-    with open(out_path, "w", newline="") as f:
-        w = csv.writer(f)
-        # First cell label to match requested format
-        w.writerow(["block size:"] + header_percentiles)
+    out_path = output_dir / f"{mb_label}_percentiles.csv"
+    try:
+        with open(out_path, "w", newline="") as f:
+            w = csv.writer(f)
+            # Header row
+            w.writerow(["metric"] + header_percentiles)
 
-        for label, values in sorted(datasets.items()):
-            if not values:
-                freqs = [0.0 for _ in range(len(percentile_values))]
-            else:
-                freqs = np.percentile(np.array(values), percentile_values)
+            # Write each metric's percentiles
+            for metric_name, values in sorted(datasets.items()):
+                if not values:
+                    freqs = [0.0 for _ in range(len(percentile_values))]
+                else:
+                    freqs = np.percentile(np.array(values), percentile_values)
 
-            freqs_out[label] = freqs
-            # Write row: label + percentile values with no decimal places (actual counts)
-            w.writerow([label] + [int(x) for x in freqs])
-
-    print(f"Wrote combined frequency distributions CSV: {out_path}")
-    return freqs_out
+                # Write row: metric_name + percentile values with no decimal places
+                w.writerow([metric_name] + [int(x) for x in freqs])
+        
+        return True
+    except Exception as e:
+        return False
 
 # ============================================================
 # NEW SECTION: RAW dependency distance computation & plotting
@@ -870,131 +701,9 @@ def raw_dependency_distances(instructions: List[Instruction]) -> List[int]:
 
     return dists
 
-def plot_raw_cdfs(raw_dict: Dict[str, List[int]], output_dir: Path):
-    """
-    Plot CDF of RAW dependency distances for each trace.
-    """
-    if not raw_dict:
-        print("No RAW distances to plot.")
-        return
 
-    # Linear x
-    plt.figure(figsize=(9, 6))
-    for label, dists in raw_dict.items():
-        if not dists:
-            continue
-        x, y = compute_cdf(dists)
-        plt.plot(x, y, linewidth=2, label=label)
-    plt.xlabel("RAW Dependency Distance (instructions)")
-    plt.ylabel("CDF")
-    plt.title("CDF of Read-After-Write (RAW) Dependency Distances")
-    plt.grid(True, linestyle="--", alpha=0.6)
-    plt.legend()
-    plt.tight_layout()
-    out = output_dir / "raw_dep_cdf_full.png"
-    plt.savefig(out, dpi=150)
-    print(f"Wrote {out}")
-    plt.close()
 
-    # Log-x
-    plt.figure(figsize=(9, 6))
-    for label, dists in raw_dict.items():
-        if not dists:
-            continue
-        x, y = compute_cdf(dists)
-        plt.plot(x, y, linewidth=2, label=label)
-    plt.xscale("log")
-    plt.xlabel("RAW Dependency Distance (log scale)")
-    plt.ylabel("CDF")
-    plt.title("CDF of Read-After-Write (RAW) Dependency Distances — log-x")
-    plt.grid(True, which="both", linestyle="--", alpha=0.6)
-    plt.legend()
-    plt.tight_layout()
-    out = output_dir / "raw_dep_cdf_logx.png"
-    plt.savefig(out, dpi=150)
-    print(f"Wrote {out}")
-    plt.close()
 
-    # Zoomed tail
-    plt.figure(figsize=(9, 6))
-    for label, dists in raw_dict.items():
-        if not dists:
-            continue
-        x, y = compute_cdf(dists)
-        plt.plot(x, y, linewidth=2, label=label)
-    plt.xscale("log")
-    plt.ylim(0.8, 1.0)
-    plt.yticks([0.8, 0.9, 1.0])
-    plt.xlabel("RAW Dependency Distance (log scale)")
-    plt.ylabel("CDF")
-    plt.title("RAW Dependency Distance — Zoomed Upper Tail")
-    plt.grid(True, which="both", linestyle="--", alpha=0.6)
-    plt.legend()
-    plt.tight_layout()
-    out = output_dir / "raw_dep_cdf_zoomed.png"
-    plt.savefig(out, dpi=150)
-    print(f"Wrote {out}")
-    plt.close()
-
-def plot_cdfs_block_len(block_dict):
-    # --- Full CDF ---
-    plt.figure(figsize=(9, 6))
-    for label, sizes in block_dict.items():
-        if not sizes:
-            continue
-        x, y = compute_cdf(sizes)
-        plt.plot(x, y, label=label, linewidth=2)
-    # plt.xscale("log")
-    plt.xlabel("Basic Block Size (instructions)")
-    plt.ylabel("CDF")
-    plt.title("CDF of Basic Block Sizes across User-Space Execution") # change to kernel
-    plt.legend()
-    plt.grid(True, which="both", linestyle="--", alpha=0.6)
-    plt.tight_layout()
-    full_path = OUT_DIR / "block_cdf_full.png"
-    plt.savefig(full_path, dpi=150)
-    plt.close()
-    print(f"Wrote {full_path}")
-
-    # --- Full CDF log ---
-    plt.figure(figsize=(9, 6))
-    for label, sizes in block_dict.items():
-        if not sizes:
-            continue
-        x, y = compute_cdf(sizes)
-        plt.plot(x, y, label=label, linewidth=2)
-    plt.xscale("log")
-    plt.xlabel("Basic Block Size (instructions, log scale)")
-    plt.ylabel("CDF")
-    plt.title("CDF of Basic Block Sizes across User-Space Execution") # change to kernel
-    plt.legend()
-    plt.grid(True, which="both", linestyle="--", alpha=0.6)
-    plt.tight_layout()
-    full_path = OUT_DIR / "block_cdf_full_log.png"
-    plt.savefig(full_path, dpi=150)
-    plt.close()
-    print(f"Wrote {full_path}")
-
-    # --- Zoomed upper tail ---
-    plt.figure(figsize=(9, 6))
-    for label, sizes in block_dict.items():
-        if not sizes:
-            continue
-        x, y = compute_cdf(sizes)
-        plt.plot(x, y, label=label, linewidth=2)
-    plt.xscale("log")
-    plt.xlabel("Basic Block Size (instructions, log scale)")
-    plt.ylabel("CDF")
-    plt.title("CDF of Basic Block Sizes across User-Space Execution (zoomed)") # change to kernel    
-    plt.legend()
-    plt.grid(True, which="both", linestyle="--", alpha=0.6)
-    plt.ylim(0.8, 1.0)
-    plt.yticks([0.8, 0.9, 1.0])
-    plt.tight_layout()
-    zoom_path = OUT_DIR / "block_cdf_zoomed.png"
-    plt.savefig(zoom_path, dpi=150)
-    plt.close()
-    print(f"Wrote {zoom_path}")
 
 
 def write_raw_csv(raw_dict: Dict[str, List[int]], output_dir: Path):
@@ -1005,7 +714,6 @@ def write_raw_csv(raw_dict: Dict[str, List[int]], output_dir: Path):
             w.writerow(["Index", "RAW_Distance"])
             for i, d in enumerate(dists):
                 w.writerow([i, d])
-        print(f"Wrote {path}")
 
 # -----------------------------
 # Main
@@ -1043,158 +751,107 @@ def write_cdf_percentiles_csv(jump_dict: Dict[str, List[int]], output_dir: Path)
             for p, v in zip(percentiles, pct_vals):
                 w.writerow([p, v])
 
-        print(f"Wrote percentile CDF CSV for {label}: {out}")
-
 def main():
-    ap = argparse.ArgumentParser(description="Jump CDFs, scatter plots, single-app family analytics, and RAW dependency distances")
-    ap.add_argument("-i", "--inputPath", required=True, help="Input trace directory")
-    ap.add_argument("-o", "--outputPath", required=True, help="Output directory")
-    ap.add_argument("-k", "--kernelSpace", action="store_true", help="Kernel-space trace flag")
-    ap.add_argument("--familyApp", help="Single app label (filename stem) to plot family CDFs & stacked bar")
-    ap.add_argument("--rawCSV", action="store_true", help="Also write per-trace RAW distance CSVs")
+    ap = argparse.ArgumentParser(description="Compute trace statistics and generate percentiles CSV per microbenchmark")
+    ap.add_argument("-i", "--inputPath", required=True, help="Parent directory containing binary subdirectories")
+    ap.add_argument("-o", "--outputPath", required=True, help="Output directory for CSV files")
     args = ap.parse_args()
 
     input_dir = Path(args.inputPath)
     output_dir = Path(args.outputPath)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- Pass 1: parse all traces, build blocks, compute jump stats ---
-    jump_dict: Dict[str, List[int]] = {}
-    pairs_by_trace: Dict[str, List[Tuple[int,int]]] = {}
-    all_large_jumps = []
+    if not input_dir.exists():
+        print(f"Input directory does not exist: {input_dir}")
+        return
 
-    # For RAW distances
-    raw_dict: Dict[str, List[int]] = {}
+    # Get all binary subdirectories
+    binary_dirs = sorted([d for d in input_dir.iterdir() if d.is_dir()])
+    
+    if not binary_dirs:
+        print(f"No subdirectories found in {input_dir}")
+        return
 
-    # Keep parsed content for single-app processing
-    single_app_instrs = None
-    single_app_blocks = None
-    block_dict = {}
-    taken_dict = {}
-    not_taken_dict = {}
-
-    for trace_path in sorted(input_dir.iterdir()):
-        if not trace_path.is_file():
+    total_processed = 0
+    total_success = 0
+    
+    # Process each binary directory
+    for binary_dir in binary_dirs:
+        # Find all disassembled .data files (those with _dis.data suffix)
+        dis_files = sorted([f for f in binary_dir.glob("*_dis.data") if f.is_file()])
+        
+        if not dis_files:
             continue
-        label = trace_path.stem
-        instrs, _fam_counts_total = parse_trace(trace_path)
-        blocks = group_blocks(instrs)
-        # accumulate per-block family counts across all traces
-        try:
-            per_block_counts_trace, family_lists_trace = family_counts_per_block(instrs, blocks)
-        except Exception:
-            per_block_counts_trace, family_lists_trace = [], {}
+        
+        print(f"\nProcessing binary: {binary_dir.name}")
+        
+        for dis_file in dis_files:
+            total_processed += 1
+            
+            # Extract microbenchmark label from filename
+            # Filename format: {binary_name}_{unit_name}_pt_dis.data
+            # We want just the {unit_name} part
+            filename_stem = dis_file.stem  # removes .data
+            # filename_stem is like "container_hash_maps_bench_%Clear    unord_NonSSOString..._pt_dis"
+            # We need to extract just the unique microbenchmark identifier
+            
+            # Simple approach: use the full stem as the label
+            mb_label = filename_stem.replace("_pt_dis", "")
+            
+            # Parse the trace file
+            try:
+                instrs, _fam_counts_total = parse_trace(dis_file)
+                blocks = group_blocks(instrs)
+                per_block_counts, family_lists = family_counts_per_block(instrs, blocks)
+            except Exception as e:
+                print(f"  [FAILED] {dis_file.name}: {type(e).__name__}")
+                continue
+            
+            if not instrs or not blocks:
+                print(f"  [FAILED] {dis_file.name}: no instructions or blocks")
+                continue
+            
+            # Compute all statistics
+            jumps, blens, pairs = compute_jump_sizes_with_blocklens(blocks)
+            branches = classify_branches(instrs)
+            taken_runs, not_taken_runs = compute_runs(branches)
+            raw_dists = raw_dependency_distances(instrs)
+            
+            # Build combined dataset for this microbenchmark
+            mb_datasets: Dict[str, List[float]] = {}
+            
+            # Block sizes
+            mb_datasets["block_sizes"] = [b[2] for b in blocks]
+            
+            # Jump sizes
+            mb_datasets["jumps"] = jumps
+            
+            # Branch run lengths
+            mb_datasets["taken_runs"] = taken_runs if taken_runs else [0]
+            mb_datasets["not_taken_runs"] = not_taken_runs if not_taken_runs else [0]
+            
+            # RAW dependency distances
+            mb_datasets["raw_dependencies"] = raw_dists if raw_dists else [0]
+            
+            # Instruction family counts per block
+            for fam, counts in family_lists.items():
+                mb_datasets[f"family::{fam}"] = counts
+            
+            # Write the combined CSV for this microbenchmark
+            success = write_microbenchmark_distributions_csv(mb_label, mb_datasets, output_dir)
+            
+            if success:
+                print(f"  [SUCCESS] {mb_label}: {len(instrs)} instrs, {len(blocks)} blocks, {len(jumps)} jumps, {len(raw_dists)} RAW deps")
+                total_success += 1
+            else:
+                print(f"  [FAILED] {mb_label}: could not write CSV")
+    
+    print(f"\n=== Summary ===")
+    print(f"Total processed: {total_processed}")
+    print(f"Successful: {total_success}")
+    print(f"Failed: {total_processed - total_success}")
 
-        # initialize global accumulator on first use
-        if 'global_family_lists' not in locals():
-            global_family_lists = defaultdict(list)
 
-        for fam, lst in family_lists_trace.items():
-            global_family_lists[fam].extend(lst)
-        block_dict[trace_path.stem] = [b[2] for b in blocks]
-
-        jumps, blens, pairs = compute_jump_sizes_with_blocklens(blocks)
-        jump_dict[label] = jumps
-        pairs_by_trace[label] = pairs
-
-        branches = classify_branches(instrs)
-        taken_runs, not_taken_runs = compute_runs(branches)
-        taken_dict[trace_path.stem] = taken_runs
-        not_taken_dict[trace_path.stem] = not_taken_runs
-
-        # RAW distances for this stream (resets when PID/lib changes internally)
-        raw_d = raw_dependency_distances(instrs)
-        raw_dict[label] = raw_d
-
-        print(f"{trace_path.name}: {len(instrs)} instructions, {len(blocks)} blocks, {len(jumps)} filtered jumps, {len(raw_d)} RAW reads")
-
-        large = print_large_jumps(jumps, threshold=10000)
-        all_large_jumps.extend([(label, j) for _, j in large])
-
-        if args.familyApp and label == args.familyApp:
-            single_app_instrs = instrs
-            single_app_blocks = blocks
-
-    # block len / taken/not-taken / jump / raw / family datasets
-    # Instead of plotting, build a combined dataset map and write a single CSV of frequency distributions.
-    combined_datasets: Dict[str, List[float]] = {}
-
-    # block sizes
-    for label, sizes in block_dict.items():
-        print(label)
-        print(np.percentile(np.array(sizes), [10,20,30,40,50,60,70,80,90,100]))
-        combined_datasets[f"block::{label}"] = sizes
-
-    # taken / not-taken run lengths
-    for label, sizes in taken_dict.items():
-        combined_datasets[f"taken_runs::{label}"] = sizes
-    for label, sizes in not_taken_dict.items():
-        combined_datasets[f"not_taken_runs::{label}"] = sizes
-
-    # jumps
-    for label, js in jump_dict.items():
-        combined_datasets[f"jumps::{label}"] = js
-
-    # RAW dependency distances
-    for label, rd in raw_dict.items():
-        combined_datasets[f"raw::{label}"] = rd
-
-    # If familyApp requested, include per-family counts as separate rows
-    # Include aggregated family lists across all traces
-    if 'global_family_lists' in locals():
-        for fam, lst in global_family_lists.items():
-            combined_datasets[f"family::{fam}"] = lst
-
-    # Also include single-app family breakdown if requested
-    if args.familyApp and single_app_instrs and single_app_blocks:
-        per_block_counts, family_lists = family_counts_per_block(single_app_instrs, single_app_blocks)
-        for fam, lst in family_lists.items():
-            combined_datasets[f"family::{args.familyApp}::{fam}"] = lst
-
-    # Write single combined CSV of frequency distributions and get computed freqs
-    freqs_map = write_frequency_distributions_csv(combined_datasets, output_dir)
-
-    # Save large jumps summary
-    if all_large_jumps:
-        csv_path = output_dir / "large_jumps_over_100.csv"
-        with open(csv_path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["Trace", "Jump_Size"])
-            writer.writerows(all_large_jumps)
-        print(f"\n[+] Saved all large jumps (>100) to {csv_path}")
-
-    # --- Previously plotted outputs ---
-    if pairs_by_trace:
-        write_pairs_csv(pairs_by_trace, output_dir)
-    else:
-        print("No (block_len, jump_size) pairs to write.")
-
-    # Optional: write raw CSVs if requested
-    if args.rawCSV and raw_dict:
-        write_raw_csv(raw_dict, output_dir)
-        write_percentile_table("raw_cdf", raw_dict, output_dir)
-
-    # --- Single app family analytics ---
-    if args.familyApp:
-        if single_app_instrs is None or single_app_blocks is None:
-            # Try to pick a file matching (case-insensitive contains) if exact stem not found
-            fallback = None
-            for p in sorted(input_dir.iterdir()):
-                if p.is_file() and args.familyApp.lower() in p.stem.lower():
-                    fallback = p
-                    break
-            if fallback:
-                print(f"[familyApp] Exact stem '{args.familyApp}' not found; using '{fallback.stem}' as fallback.")
-                single_app_instrs, _ = parse_trace(fallback)
-                single_app_blocks = group_blocks(single_app_instrs)
-
-        if single_app_instrs and single_app_blocks:
-                per_block_counts, family_lists = family_counts_per_block(single_app_instrs, single_app_blocks)
-                write_family_counts_csv_single_app(args.familyApp, per_block_counts, output_dir)
-                # family lists were included earlier into the combined distributions CSV
-                write_percentile_table("instruction_cdf", family_lists, output_dir)
-        else:
-            print(f"[familyApp] No matching trace for '{args.familyApp}'. Skipping family plots.")
 
 if __name__ == "__main__":
     main()

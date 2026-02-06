@@ -21,11 +21,20 @@ class FollyIntelPTRecorder:
         self.discover_benchmarks()
 
     def _unit_output_exists(self, benchmark_name: str, unit_name: str) -> bool:
-        """Check if output file already exists for this benchmark/unit pair."""
+        """Check if output file already exists for this benchmark/unit pair and is non-empty.
+        
+        Returns True only if the .data file exists AND has size > 0 bytes.
+        """
         safe_unit_name = re.sub(r'[/\\:*?"<>|]', '_', unit_name)
         binary_dir = self.output_dir / benchmark_name
         data_file = binary_dir / f"{benchmark_name}_{safe_unit_name}_pt.data"
-        return data_file.exists()
+        if data_file.exists():
+            try:
+                file_size = data_file.stat().st_size
+                return file_size > 0
+            except OSError:
+                return False
+        return False
 
     def load_probe_times(self, benchmark_name: str) -> Dict[str, tuple]:
         """Load cached probe times and commands from disk if they exist.
@@ -44,13 +53,15 @@ class FollyIntelPTRecorder:
                     line = line.strip()
                     if not line:
                         continue
-                    parts = line.split(maxsplit=2)
-                    if len(parts) >= 2:
-                        unit_name = parts[0]
+                    # Format: unit_name elapsed_seconds [command]
+                    # Unit names can contain spaces, so use greedy match to find the last float
+                    # Pattern: everything up to the last space-delimited float
+                    m = re.match(r'^(.+)\s+([\d.]+)(?:\s+(.*))?$', line)
+                    if m:
+                        unit_name = m.group(1).strip()
                         try:
-                            elapsed = float(parts[1])
-                            # Command is optional (parts[2] if present)
-                            cmd = parts[2] if len(parts) > 2 else None
+                            elapsed = float(m.group(2))
+                            cmd = m.group(3) if m.group(3) else None
                             probe_times[unit_name] = (elapsed, cmd)
                         except ValueError:
                             continue
@@ -86,14 +97,13 @@ class FollyIntelPTRecorder:
 
     def discover_benchmarks(self):
         possible_paths = [
-            Path("/myd/DCPerf/benchmarks/sw_bench"),
-            Path("/users/alanuiuc/Petar-Test")
+            Path("/myd/DCPerf/benchmarks/sw_bench_2")
         ]
 
         wdl_build_base = None
         for path in possible_paths:
             if path.exists():
-                test_files = list(path.glob("memcpy_benchmark")) + list(path.glob("*benchmark"))
+                test_files = list(path.glob("memcpy_benchmark")) + list(path.glob("*benchmark")) + list(path.glob("*bench"))
                 if test_files:
                     wdl_build_base = path
                     break
@@ -163,55 +173,46 @@ class FollyIntelPTRecorder:
 
         # Primary path: many benchmarks support --bm_list to enumerate unit names
         list_cmd = [str(benchmark_binary), "--bm_list"]
-        try:
-            print(f"Running to list units: {' '.join(list_cmd)} (cwd={benchmark_dir})")
-            res = subprocess.run(list_cmd, capture_output=True, text=True, timeout=15, cwd=benchmark_dir)
-            print(f"List returncode: {res.returncode}; stdout_len={len(res.stdout or '')}")
-            units = {}
-            if res.returncode == 0 and res.stdout and res.stdout.strip():
-                # Each non-empty line is a unit name
-                unit_names = [l.strip() for l in res.stdout.splitlines() if l.strip()]
-                print(f"Found {len(unit_names)} units via --bm_list for {benchmark_binary.name}")
-                for unit in unit_names:
-                    # Probe each unit with --benchmark --bm_regex
-                    bm_cmd = [str(benchmark_binary), "--benchmark", "--bm_regex", f"^{re.escape(unit)}$"]
-                    try:
-                        print(f"  Probing unit '{unit}'")
-                        probe_start = time.time()
-                        r2 = subprocess.run(bm_cmd, capture_output=True, text=True, timeout=20, cwd=benchmark_dir)
-                        probe_elapsed = time.time() - probe_start
-                        
-                        # Verify the unit ran successfully
-                        if r2.returncode == 0:
-                            # Build the perfspect command for this unit
-                            perfspect_cmd_str = ' '.join(["perfspect", "metrics", "--"] + bm_cmd)
-                            probe_times[unit] = (probe_elapsed, perfspect_cmd_str)
-                            
-                            parsed = self._extract_units_from_text(r2.stdout)
-                            if unit in parsed:
-                                units[unit] = parsed[unit]
-                            elif parsed:
-                                units[unit] = list(parsed.values())[0]
-                            else:
-                                units[unit] = 1e6
-                        else:
-                            print(f"  Probe failed for unit '{unit}' (returncode {r2.returncode})")
-                    except subprocess.TimeoutExpired:
-                        print(f"  Probe timed out for unit '{unit}'")
-                        probe_elapsed = time.time() - probe_start
-                        probe_times[unit] = (probe_elapsed, None)
+        print(f"Running to list units: {' '.join(list_cmd)} (cwd={benchmark_dir})")
+        res = subprocess.run(list_cmd, capture_output=True, text=True, cwd=benchmark_dir)
+        print(f"List returncode: {res.returncode}; stdout_len={len(res.stdout or '')}")
+        units = {}
+        if res.returncode == 0 and res.stdout and res.stdout.strip():
+            # Each non-empty line is a unit name
+            unit_names = [l.strip() for l in res.stdout.splitlines() if l.strip()]
+            print(f"Found {len(unit_names)} units via --bm_list for {benchmark_binary.name}")
+            for unit in unit_names:
+                # Probe each unit with --benchmark --bm_regex
+                bm_cmd = [str(benchmark_binary), "--benchmark", "--bm_regex", f"^{re.escape(unit)}$"]
+                print(f"  Probing unit '{unit}'")
+                probe_start = time.time()
+                r2 = subprocess.run(bm_cmd, capture_output=True, text=True, cwd=benchmark_dir)
+                probe_elapsed = time.time() - probe_start
+                
+                # Verify the unit ran successfully
+                if r2.returncode == 0:
+                    # Build the perfspect command for this unit
+                    perfspect_cmd_str = ' '.join(["perfspect", "metrics", "--"] + bm_cmd)
+                    probe_times[unit] = (probe_elapsed, perfspect_cmd_str)
+                    
+                    parsed = self._extract_units_from_text(r2.stdout)
+                    if unit in parsed:
+                        units[unit] = parsed[unit]
+                    elif parsed:
+                        units[unit] = list(parsed.values())[0]
+                    else:
                         units[unit] = 1e6
-                return units, probe_times
-            # if --bm_list produced nothing, fall back to previous behavior
-            print(f"--bm_list produced no output for {benchmark_binary.name}, falling back to --json/text discovery")
-        except subprocess.TimeoutExpired:
-            print(f"--bm_list timed out for {benchmark_binary.name}; falling back to --json/text discovery")
+                else:
+                    print(f"  Probe failed for unit '{unit}' (returncode {r2.returncode})")
+            return units, probe_times
+        # if --bm_list produced nothing, fall back to previous behavior
+        print(f"--bm_list produced no output for {benchmark_binary.name}, falling back to --json/text discovery")
 
         # Fallback: try --json or plain run as before
         cmd = [str(benchmark_binary), "--json"]
         try:
             print(f"Running to discover units: {' '.join(cmd)} (cwd={benchmark_dir})")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, cwd=benchmark_dir)
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=benchmark_dir)
             print(f"Discovery returncode: {result.returncode}; stdout_len={len(result.stdout or '')}; stderr_len={len(result.stderr or '')}")
             units = {}
             # Try JSON first
@@ -232,21 +233,6 @@ class FollyIntelPTRecorder:
                     print(f"[discover units] stderr (truncated, first 80 lines):\n{err_snip}")
 
             return units, {}
-        except subprocess.TimeoutExpired as te:
-            print(f"JSON discovery timed out for {benchmark_binary.name}; falling back to plain text parse: {te}")
-            # Try running the binary without --json to get textual listing (short timeout)
-            try:
-                fallback = [str(benchmark_binary)]
-                print(f"Running fallback discover command: {' '.join(fallback)}")
-                result = subprocess.run(fallback, capture_output=True, text=True, timeout=15, cwd=benchmark_dir)
-                print(f"Fallback returncode: {result.returncode}; stdout_len={len(result.stdout or '')}; stderr_len={len(result.stderr or '')}")
-                units = self._extract_units_from_text(result.stdout)
-                if not units:
-                    print(f"Fallback parsing produced no units for {benchmark_binary.name}")
-                return units, {}
-            except Exception as e2:
-                print(f"Fallback discovery failed for {benchmark_binary.name}: {e2}")
-                return {}, {}
         except Exception as e:
             print(f"Error running benchmark to discover units: {e}")
             return {}, {}
@@ -398,13 +384,13 @@ class FollyIntelPTRecorder:
             # Run benchmark; don't wait too long for it
             print("Launching benchmark process...")
             bench_proc = subprocess.run(
-                benchmark_cmd, capture_output=True, text=True, cwd=benchmark_dir, timeout=perf_sleep + 5
+                benchmark_cmd, capture_output=True, text=True, cwd=benchmark_dir
             )
             print(f"Benchmark finished: returncode={bench_proc.returncode}; stdout_len={len(bench_proc.stdout or '')}; stderr_len={len(bench_proc.stderr or '')}")
 
             # Wait for perf to finish (it will finish when sleep finishes)
             print("Waiting for perf to finish...")
-            perf_stdout, perf_stderr = perf_proc.communicate(timeout=perf_sleep + 10)
+            perf_stdout, perf_stderr = perf_proc.communicate()
             print(f"Perf finished: returncode={perf_proc.returncode}; stdout_len={len(perf_stdout or '')}; stderr_len={len(perf_stderr or '')}")
 
             elapsed = time.time() - start
@@ -426,13 +412,6 @@ class FollyIntelPTRecorder:
 
             return (True, str(perf_data_file), elapsed)
 
-        except subprocess.TimeoutExpired as te:
-            print(f"TIMEOUT: {te}")
-            try:
-                perf_proc.kill()
-            except Exception:
-                pass
-            return (False, "", 0.0)
         except PermissionError as pe:
             print(f"Permission denied: {pe}. Need sudo to run perf record")
             return (False, "", 0.0)
@@ -470,39 +449,27 @@ class FollyIntelPTRecorder:
             cached_probe_times = {}
             
             if probe_cache_file.exists():
-                # Load cached probe times and extract units from it
-                # Format: unit_name elapsed_seconds [command]
-                num_cached_units = 0
-                with open(probe_cache_file, 'r') as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        parts = line.split(maxsplit=2)
-                        if len(parts) >= 2:
-                            unit_name = parts[0]
-                            try:
-                                elapsed = float(parts[1])
-                                units[unit_name] = 1e6  # Default throughput estimate
-                                cached_probe_times[unit_name] = elapsed
-                                num_cached_units += 1
-                            except ValueError:
-                                continue
-                
-                print(f"\n{name}: Loaded {num_cached_units} cached units from probe times")
-                
-                # Check if all units already have output files (complete)
-                completed_count = 0
-                for unit in units.keys():
-                    if self._unit_output_exists(name, unit):
-                        completed_count += 1
-                
-                if completed_count == len(units):
-                    print(f"  All {len(units)} units already completed (output files exist) - skipping entirely")
-                    skipped_count += len(units)
-                    continue
-                else:
-                    print(f"  {len(units)} cached units, {completed_count} already completed, {len(units) - completed_count} need recording")
+                # Load cached probe times using the proper parser
+                cached_times = self.load_probe_times(name)
+                if cached_times:
+                    # Extract units from cached times
+                    units = {unit: 1e6 for unit in cached_times.keys()}
+                    cached_probe_times = {unit: elapsed for unit, (elapsed, cmd) in cached_times.items()}
+                    
+                    print(f"\n{name}: Loaded {len(units)} cached units from probe times")
+                    
+                    # Check if all units already have output files (complete)
+                    completed_count = 0
+                    for unit in units.keys():
+                        if self._unit_output_exists(name, unit):
+                            completed_count += 1
+                    
+                    if completed_count == len(units):
+                        print(f"  All {len(units)} units already completed (output files exist) - skipping entirely")
+                        skipped_count += len(units)
+                        continue
+                    else:
+                        print(f"  {len(units)} cached units, {completed_count} already completed, {len(units) - completed_count} need recording")
             else:
                 # No cache - probe normally
                 units, probe_times = self.run_benchmark_get_units(binary, is_standalone=is_standalone)
