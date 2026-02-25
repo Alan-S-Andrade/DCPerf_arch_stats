@@ -597,6 +597,106 @@ class FollyBenchmarkPerfRunner:
         print(f"Results directory: {self.output_dir}")
         print(f"{'='*70}\n")
 
+def parse_perf_stat_output(text, elapsed=None):
+    """Parse perf stat stderr output into a dict of metrics.
+    
+    Args:
+        text: The stderr output from perf stat.
+        elapsed: Optional wall-clock elapsed time (seconds). If not provided,
+                 parsed from perf output.
+    
+    Returns:
+        Dict of metric_name -> numeric_value.
+    """
+    metrics = {}
+    
+    # Mapping raw event codes to human-readable names
+    event_name_map = {"r2424": "L2-icache-load-misses"}
+    
+    ipc_found = False
+    for line in text.splitlines():
+        # Pattern: <count> <event-name> [optional annotations like # 1.22 insn per cycle (58.41%)]
+        m = re.match(r'\s*([\d,]+)\s+(\S+)', line)
+        if m:
+            count_str = m.group(1).replace(',', '')
+            event_name = m.group(2)
+            try:
+                count = int(count_str)
+                output_name = event_name_map.get(event_name, event_name)
+                metrics[output_name] = count
+            except ValueError:
+                pass
+        
+        # Parse IPC from the annotation: # 1.22 insn per cycle
+        ipc_match = re.search(r'#\s+([\d.]+)\s+insn per cycle', line)
+        if ipc_match and not ipc_found:
+            metrics["IPC"] = float(ipc_match.group(1))
+            ipc_found = True
+    
+    # Parse elapsed time from perf output
+    elapsed_match = re.search(r'([\d.]+)\s+seconds time elapsed', text)
+    if elapsed_match:
+        metrics["Elapsed time (s)"] = float(elapsed_match.group(1))
+    elif elapsed is not None:
+        metrics["Elapsed time (s)"] = round(elapsed, 6)
+    
+    return metrics
+
+
+def run_single_cmd_perf_stat(cmd_list, perf_events=None, output_dir=None):
+    """Run perf stat on a single arbitrary command and return parsed metrics dict.
+    
+    Args:
+        cmd_list: List of strings representing the command to run.
+        perf_events: Comma-separated string of PMU events. Uses default set if None.
+        output_dir: Optional directory to save raw perf output.
+    
+    Returns:
+        Dict of metric_name -> numeric_value (e.g. cycles, instructions, IPC, etc.)
+    """
+    if perf_events is None:
+        perf_events = ('cycles,instructions,L1-icache-load-misses,iTLB-load-misses,'
+                       'L1-dcache-loads,L1-dcache-load-misses,L1-dcache-stores,'
+                       'LLC-load-misses,branch-load-misses,branch-misses,r2424')
+    
+    perf_cmd = ["sudo", "perf", "stat", "-a", "-e", perf_events, "--"] + cmd_list
+    
+    print(f"\n{'='*70}")
+    print(f"[perf stat] Running: {' '.join(cmd_list)}")
+    print(f"[perf stat] Full command: {' '.join(perf_cmd)}")
+    print(f"{'='*70}")
+    
+    start_time = time.time()
+    
+    try:
+        result = subprocess.run(perf_cmd, capture_output=True, text=True)
+        elapsed = time.time() - start_time
+        
+        # perf stat output goes to stderr
+        perf_output = result.stderr if result.stderr else ""
+        
+        # Save raw output if output_dir specified
+        if output_dir:
+            out_dir = Path(output_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            raw_file = out_dir / "perf_stat_raw.txt"
+            with open(raw_file, 'w') as f:
+                f.write(f"Command: {' '.join(cmd_list)}\n")
+                f.write(f"Elapsed: {elapsed:.3f}s\n\n")
+                f.write(perf_output)
+                if result.stdout:
+                    f.write(f"\n\nBenchmark stdout:\n{result.stdout}")
+            print(f"[perf stat] Raw output saved to {raw_file}")
+        
+        metrics = parse_perf_stat_output(perf_output, elapsed)
+        print(f"[perf stat] Collected {len(metrics)} metrics in {elapsed:.2f}s")
+        return metrics
+    
+    except Exception as e:
+        print(f"[perf stat] Error: {e}")
+        return {}
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run folly benchmark units and generic binaries with perf stat PMU measurements"
@@ -636,9 +736,41 @@ def main():
         default='cycles,instructions,L1-icache-load-misses,iTLB-load-misses,L1-dcache-loads,L1-dcache-load-misses,L1-dcache-stores,LLC-load-misses,branch-load-misses,branch-misses,r2424',
         help='PMU events to measure'
     )
+    parser.add_argument(
+        '--cmd',
+        nargs=argparse.REMAINDER,
+        default=None,
+        help='Run perf stat on a single command. Everything after --cmd is treated as the command. '
+             'Example: --cmd sysbench cpu --cpu-max-prime=20000 --threads=8 --time=8 run'
+    )
     
     args = parser.parse_args()
     
+    # Single-command mode
+    if args.cmd:
+        cmd_list = args.cmd
+        # Strip leading '--' if present (argparse REMAINDER quirk)
+        if cmd_list and cmd_list[0] == '--':
+            cmd_list = cmd_list[1:]
+        if not cmd_list:
+            print("Error: --cmd requires a command to run")
+            sys.exit(1)
+        
+        output_dir = Path(args.output_dir)
+        if not output_dir.is_absolute():
+            output_dir = Path.cwd() / output_dir
+        
+        metrics = run_single_cmd_perf_stat(cmd_list, args.events, str(output_dir))
+        
+        # Save metrics to JSON
+        output_dir.mkdir(parents=True, exist_ok=True)
+        json_file = output_dir / "perf_stat_metrics.json"
+        with open(json_file, 'w') as f:
+            json.dump(metrics, f, indent=2)
+        print(f"[perf stat] Metrics saved to {json_file}")
+        return
+    
+    # Original batch mode
     # Make output directory absolute if it's relative
     output_dir = Path(args.output_dir)
     if not output_dir.is_absolute():

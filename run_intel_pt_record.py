@@ -532,12 +532,203 @@ class FollyIntelPTRecorder:
         print(f"Completed in this run: {total_work - skipped_count - failed_count}")
 
 
+def run_single_cmd_intel_pt(cmd_list, output_dir=None):
+    """Run Intel PT recording on a single command, disassemble, and compute trace metrics.
+    
+    This function:
+      1. Records an Intel PT trace while running the given command
+      2. Disassembles the trace using perf script
+      3. Computes instruction trace statistics (block sizes, jumps, branch runs,
+         RAW dependency distances, instruction family distributions)
+      4. Returns a flat dict of percentile metrics suitable for the feature extraction JSON
+    
+    Args:
+        cmd_list: List of strings representing the command to run.
+        output_dir: Optional directory to save intermediate files.
+    
+    Returns:
+        Dict of metric_name -> value, e.g.:
+          {"block_size_P10": 1, "block_size_P20": 2, ..., "family::arith_P10": 0, ...}
+    """
+    import numpy as np
+    
+    # Import trace analysis functions from frequencies.py  
+    script_dir = Path(__file__).parent
+    import importlib.util
+    freq_spec = importlib.util.spec_from_file_location("frequencies", script_dir / "frequencies.py")
+    freq_mod = importlib.util.module_from_spec(freq_spec)
+    freq_spec.loader.exec_module(freq_mod)
+    
+    if output_dir is None:
+        work_dir = Path(tempfile.mkdtemp(prefix="intel_pt_"))
+    else:
+        work_dir = Path(output_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    
+    perf_data_file = work_dir / "pt_trace.data"
+    dis_file = work_dir / "pt_trace_dis.txt"
+    
+    print(f"\n{'='*70}")
+    print(f"[Intel PT] Recording: {' '.join(cmd_list)}")
+    print(f"{'='*70}")
+    
+    # Step 1: Record Intel PT trace
+    # Start perf record in background, then run the benchmark command, then stop perf
+    perf_cmd = [
+        "sudo", "perf", "record",
+        "-e", "intel_pt//u",
+        "-a",
+        "-o", str(perf_data_file),
+        "--"
+    ] + cmd_list
+    
+    print(f"[Intel PT] Command: {' '.join(perf_cmd)}")
+    
+    try:
+        start = time.time()
+        result = subprocess.run(perf_cmd, capture_output=True, text=True)
+        elapsed = time.time() - start
+        
+        if result.returncode != 0:
+            print(f"[Intel PT] perf record failed (code {result.returncode})")
+            if result.stderr:
+                print(f"[Intel PT] stderr: {result.stderr[:500]}")
+            return {}
+        
+        print(f"[Intel PT] Recording complete in {elapsed:.2f}s")
+        
+        if not perf_data_file.exists() or perf_data_file.stat().st_size == 0:
+            print("[Intel PT] No trace data recorded")
+            return {}
+        
+    except Exception as e:
+        print(f"[Intel PT] Recording error: {e}")
+        return {}
+    
+    # Step 2: Disassemble the trace (cap at 10 seconds)
+    # Write output directly to file to avoid pipe-buffer deadlocks with large traces
+    print(f"[Intel PT] Disassembling trace (max 10s)...")
+    try:
+        import shlex
+        escaped_data = shlex.quote(str(perf_data_file))
+        escaped_out = shlex.quote(str(dis_file))
+        # Pipe through grep -v to filter 'perf' lines on-the-fly, write to file
+        dis_cmd = (f"sudo timeout 10 perf script --insn-trace --xed -i {escaped_data}"
+                   f" | grep -v perf > {escaped_out}")
+        proc = subprocess.run(dis_cmd, shell=True, stderr=subprocess.PIPE, text=True, timeout=30)
+        
+        # returncode 124 = `timeout` killed perf; partial output is still usable
+        # When piped, the shell reports the last command's exit code (grep),
+        # so also accept 0 and 141 (SIGPIPE to perf when grep exits)
+        if proc.returncode not in (0, 124, 141):
+            # Check if we still got some output despite the error code
+            if not dis_file.exists() or dis_file.stat().st_size == 0:
+                print(f"[Intel PT] Disassembly failed (code {proc.returncode})")
+                if proc.stderr:
+                    print(f"[Intel PT] stderr: {proc.stderr[:500]}")
+                return {}
+        
+        # Count lines in the output file
+        line_count = 0
+        if dis_file.exists():
+            with open(dis_file, 'r') as f:
+                for _ in f:
+                    line_count += 1
+        
+        if line_count == 0:
+            print("[Intel PT] No instruction lines produced")
+            return {}
+        
+        print(f"[Intel PT] Disassembled {line_count} instruction lines")
+        
+    except subprocess.TimeoutExpired:
+        # Python 30s safety net fired; still try to use whatever was written
+        if dis_file.exists() and dis_file.stat().st_size > 0:
+            print("[Intel PT] Disassembly hit Python safety timeout – using partial output")
+        else:
+            print("[Intel PT] Disassembly timed out with no output")
+            return {}
+    except Exception as e:
+        print(f"[Intel PT] Disassembly error: {e}")
+        return {}
+    
+    # Step 3: Parse trace and compute statistics
+    print(f"[Intel PT] Computing trace statistics...")
+    try:
+        instrs, _fam_counts = freq_mod.parse_trace(str(dis_file))
+        
+        if not instrs:
+            print("[Intel PT] No instructions parsed from trace")
+            return {}
+        
+        blocks = freq_mod.group_blocks(instrs)
+        per_block_counts, family_lists = freq_mod.family_counts_per_block(instrs, blocks)
+        jumps, blens, pairs = freq_mod.compute_jump_sizes_with_blocklens(blocks)
+        branches = freq_mod.classify_branches(instrs)
+        taken_runs, not_taken_runs = freq_mod.compute_runs(branches)
+        raw_dists = freq_mod.raw_dependency_distances(instrs)
+        
+        print(f"[Intel PT] {len(instrs)} instrs, {len(blocks)} blocks, "
+              f"{len(jumps)} jumps, {len(raw_dists)} RAW deps")
+        
+    except Exception as e:
+        print(f"[Intel PT] Analysis error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {}
+    
+    # Step 4: Build percentile metrics dict
+    percentile_values = list(range(10, 101, 10))  # [10, 20, ..., 100]
+    percentile_labels = [f"P{p}" for p in percentile_values]
+    
+    datasets = {
+        "block_size": [b[2] for b in blocks],
+        "jumps": jumps if jumps else [0],
+        "taken_runs": taken_runs if taken_runs else [0],
+        "not_taken_runs": not_taken_runs if not_taken_runs else [0],
+        "raw_distances": raw_dists if raw_dists else [0],
+    }
+    
+    # Add instruction family distributions
+    for fam, counts in family_lists.items():
+        datasets[f"family::{fam}"] = counts
+    
+    # Compute percentiles and flatten into output dict
+    metrics = {}
+    for metric_name, values in datasets.items():
+        if not values:
+            values = [0]
+        arr = np.array(values)
+        pcts = np.percentile(arr, percentile_values)
+        for label, val in zip(percentile_labels, pcts):
+            metrics[f"{metric_name}_{label}"] = int(val)
+    
+    print(f"[Intel PT] Computed {len(metrics)} percentile metrics")
+    
+    # Clean up the large perf data file
+    try:
+        if perf_data_file.exists():
+            perf_data_file.unlink()
+            print(f"[Intel PT] Cleaned up trace data file")
+    except Exception:
+        pass
+    
+    return metrics
+
+
 def main():
     parser = argparse.ArgumentParser(description="Record Intel PT traces for folly microbenchmark units")
     parser.add_argument('--folly-test-dir', default='/myd/DCPerf/benchmarks/sw_bench/wdl_sources/folly/folly/test')
     parser.add_argument('--output-dir', default='./pt_records')
     parser.add_argument('--benchmark', help='Filter to a specific benchmark (partial match)')
     parser.add_argument('--dry-run', action='store_true', help='Print commands instead of running')
+    parser.add_argument(
+        '--cmd',
+        nargs=argparse.REMAINDER,
+        default=None,
+        help='Record Intel PT for a single command. Everything after --cmd is treated as the command. '
+             'Example: --cmd sysbench cpu --cpu-max-prime=20000 --threads=8 --time=8 run'
+    )
 
     args = parser.parse_args()
 
@@ -545,6 +736,27 @@ def main():
     if not outdir.is_absolute():
         outdir = Path.cwd() / outdir
     
+    # Single-command mode
+    if args.cmd:
+        cmd_list = args.cmd
+        # Strip leading '--' if present (argparse REMAINDER quirk)
+        if cmd_list and cmd_list[0] == '--':
+            cmd_list = cmd_list[1:]
+        if not cmd_list:
+            print("Error: --cmd requires a command to run")
+            sys.exit(1)
+        
+        metrics = run_single_cmd_intel_pt(cmd_list, str(outdir))
+        
+        # Save metrics to JSON
+        outdir.mkdir(parents=True, exist_ok=True)
+        json_file = outdir / "intel_pt_metrics.json"
+        with open(json_file, 'w') as f:
+            json.dump(metrics, f, indent=2)
+        print(f"[Intel PT] Metrics saved to {json_file}")
+        return
+    
+    # Original batch mode
     recorder = FollyIntelPTRecorder(args.folly_test_dir, str(outdir))
     recorder.run_all(args.benchmark, dry_run=args.dry_run)
 

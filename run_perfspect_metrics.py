@@ -27,6 +27,8 @@ import re
 import shutil
 import json
 import os
+import sys
+import tempfile
 
 
 def safe_name(s: str) -> str:
@@ -331,6 +333,116 @@ class BenchmarkDiscovery:
         return probe_file
 
 
+def run_single_cmd_perfspect(cmd_list, perfspect_bin='perfspect', extra_args=None, output_dir=None):
+    """Run perfspect metrics on a single arbitrary command and return parsed TMA metrics.
+    
+    Args:
+        cmd_list: List of strings representing the command to run.
+        perfspect_bin: Path to the perfspect binary.
+        extra_args: Optional list of extra arguments for perfspect.
+        output_dir: Optional directory for perfspect output files.
+    
+    Returns:
+        Dict of TMA metric_name -> float_value, e.g.:
+          {"TMA_Frontend_Bound(%)": 21.85, "TMA_..Fetch_Latency(%)": 2.64, ...}
+    """
+    import csv
+    import shutil
+    
+    if output_dir is None:
+        work_dir = Path(tempfile.mkdtemp(prefix="perfspect_"))
+    else:
+        work_dir = Path(output_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    
+    perfspect_out_dir = work_dir / "perfspect_output"
+    perfspect_out_dir.mkdir(parents=True, exist_ok=True)
+    
+    if extra_args is None:
+        extra_args = []
+    
+    # Build perfspect command
+    perfspect_cmd = [perfspect_bin, "metrics"] + extra_args + \
+                    ["--output", str(perfspect_out_dir), "--"] + cmd_list
+    
+    print(f"\n{'='*70}")
+    print(f"[perfspect] Running: {' '.join(cmd_list)}")
+    print(f"[perfspect] Full command: {' '.join(perfspect_cmd)}")
+    print(f"{'='*70}")
+    
+    try:
+        start = time.time()
+        result = subprocess.run(perfspect_cmd, capture_output=True, text=True)
+        elapsed = time.time() - start
+        
+        print(f"[perfspect] Completed in {elapsed:.2f}s (returncode={result.returncode})")
+        
+        # Save raw output
+        raw_log = work_dir / "perfspect_raw.log"
+        with open(raw_log, 'w') as f:
+            f.write(f"Command: {' '.join(cmd_list)}\n")
+            f.write(f"Elapsed: {elapsed:.3f}s\n")
+            f.write(f"Returncode: {result.returncode}\n\n")
+            f.write("=== STDOUT ===\n")
+            f.write(result.stdout or '')
+            f.write("\n=== STDERR ===\n")
+            f.write(result.stderr or '')
+        
+    except Exception as e:
+        print(f"[perfspect] Error running perfspect: {e}")
+        return {}
+    
+    # Find the summary CSV in the output directory
+    summary_files = list(perfspect_out_dir.glob("*_summary.csv")) + \
+                    list(perfspect_out_dir.glob("*_metrics_summary.csv"))
+    
+    if not summary_files:
+        # Also check for regular metrics CSV
+        summary_files = list(perfspect_out_dir.glob("*.csv"))
+    
+    if not summary_files:
+        print(f"[perfspect] No CSV output files found in {perfspect_out_dir}")
+        if result.stdout:
+            print(f"[perfspect] stdout: {result.stdout[:500]}")
+        if result.stderr:
+            print(f"[perfspect] stderr: {result.stderr[:500]}")
+        return {}
+    
+    # Parse the summary CSV for TMA metrics
+    # Format: metric,mean,min,max,stddev
+    # We want TMA_* rows, taking the 'mean' column
+    metrics = {}
+    
+    for csv_file in summary_files:
+        print(f"[perfspect] Parsing: {csv_file.name}")
+        try:
+            with open(csv_file, 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    metric_name = row.get('metric', '').strip()
+                    if not metric_name:
+                        continue
+                    
+                    # Get the mean value (prefer 'mean', fall back to 'value' or first numeric column)
+                    val_str = row.get('mean', row.get('value', '')).strip()
+                    if not val_str or val_str == 'NaN':
+                        continue
+                    
+                    try:
+                        val = float(val_str)
+                    except ValueError:
+                        continue
+                    
+                    # Only include TMA metrics
+                    if metric_name.startswith('TMA_'):
+                        metrics[metric_name] = round(val, 6)
+        except Exception as e:
+            print(f"[perfspect] Error parsing {csv_file.name}: {e}")
+    
+    print(f"[perfspect] Collected {len(metrics)} TMA metrics")
+    return metrics
+
+
 def main():
     p = argparse.ArgumentParser(description="Run perfspect metrics on discovered microbenchmark units")
     p.add_argument('--output-dir', default='./perfspect_results')
@@ -344,12 +456,43 @@ def main():
     p.add_argument('--benchmark', help='Filter to a specific benchmark binary (partial match)')
     p.add_argument('--timeout-mult', type=float, default=3.0, help='Timeout multiplier for unit runs (duration * multiplier)')
     p.add_argument('--target-iters', type=int, default=50000, help='Target iterations used to estimate unit duration')
+    p.add_argument(
+        '--cmd',
+        nargs=argparse.REMAINDER,
+        default=None,
+        help='Run perfspect metrics on a single command. Everything after --cmd is treated as the command. '
+             'Example: --cmd sysbench cpu --cpu-max-prime=20000 --threads=8 --time=8 run'
+    )
 
     args = p.parse_args()
 
     out_dir = Path(args.output_dir)
     if not out_dir.is_absolute():
         out_dir = Path.cwd() / out_dir
+    
+    # Single-command mode
+    if args.cmd:
+        cmd_list = args.cmd
+        # Strip leading '--' if present (argparse REMAINDER quirk)
+        if cmd_list and cmd_list[0] == '--':
+            cmd_list = cmd_list[1:]
+        if not cmd_list:
+            print("Error: --cmd requires a command to run")
+            import sys
+            sys.exit(1)
+        
+        extra_args = shlex.split(args.perfspect_args) if args.perfspect_args else []
+        metrics = run_single_cmd_perfspect(cmd_list, args.perfspect_bin, extra_args, str(out_dir))
+        
+        # Save metrics to JSON
+        out_dir.mkdir(parents=True, exist_ok=True)
+        json_file = out_dir / "perfspect_metrics.json"
+        with open(json_file, 'w') as f:
+            json.dump(metrics, f, indent=2)
+        print(f"[perfspect] Metrics saved to {json_file}")
+        return
+    
+    # Original batch mode
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Instantiate discovery with new parameters
