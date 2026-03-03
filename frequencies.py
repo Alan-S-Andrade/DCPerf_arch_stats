@@ -8,8 +8,8 @@ Processing flow:
      - Parse instructions and group into basic blocks
      - Compute: block sizes, jump sizes, RAW dependency distances, branch run lengths
      - Compute instruction family breakdown
-     - Generate percentile values (10th through 100th percentile) for each metric
-     - Output a single CSV file with all distributions: {microbenchmark}_percentiles.csv
+     - Generate P50 values for each metric
+     - Output a single CSV file: {microbenchmark}_percentiles.csv
 
 Usage:
   python3 frequencies.py -i /path/to/parent_dir -o /path/to/output_dir
@@ -39,7 +39,7 @@ class Instruction:
         self.instruction = instruction
 
 def write_percentile_table(prefix: str, data_dict: Dict[str, List[int]], output_dir: Path):
-    percentiles = [i / 10.0 for i in range(1, 11)]
+    percentiles = [0.5]
 
     for key, values in data_dict.items():
         if not values:
@@ -410,24 +410,24 @@ def compute_cdf(data):
 
 def write_microbenchmark_distributions_csv(mb_label: str, datasets: Dict[str, List[float]], output_dir: Path) -> bool:
     """
-    Write a single CSV with percentile distributions for one microbenchmark.
+    Write a single CSV with P50 values for one microbenchmark.
     
     Format:
-      metric_type, P10, P20, P30, P40, P50, P60, P70, P80, P90, P100
-      block_sizes, val, val, ...
-      jumps, val, val, ...
-      raw_deps, val, val, ...
-      taken_runs, val, val, ...
-      not_taken_runs, val, val, ...
-      family::*, val, val, ...
+      metric_type, P50
+      block_sizes, val
+      jumps, val
+      raw_deps, val
+      taken_runs, val
+      not_taken_runs, val
+      family::*, val
     
     Returns True if successful, False otherwise.
     """
     if not datasets:
         return False
 
-    header_percentiles = [f"P{i}" for i in range(10, 101, 10)]  # P10, P20, ..., P100
-    percentile_values = list(range(10, 101, 10))  # [10, 20, ..., 100]
+    header_percentiles = ["P50"]
+    percentile_values = [50]
 
     out_path = output_dir / f"{mb_label}_percentiles.csv"
     try:
@@ -439,11 +439,11 @@ def write_microbenchmark_distributions_csv(mb_label: str, datasets: Dict[str, Li
             # Write each metric's percentiles
             for metric_name, values in sorted(datasets.items()):
                 if not values:
-                    freqs = [0.0 for _ in range(len(percentile_values))]
+                    freqs = [0.0]
                 else:
                     freqs = np.percentile(np.array(values), percentile_values)
 
-                # Write row: metric_name + percentile values with no decimal places
+                # Write row: metric_name + P50 value with no decimal places
                 w.writerow([metric_name] + [int(x) for x in freqs])
         
         return True
@@ -721,11 +721,11 @@ def write_raw_csv(raw_dict: Dict[str, List[int]], output_dir: Path):
 
 def write_cdf_percentiles_csv(jump_dict: Dict[str, List[int]], output_dir: Path):
     """
-    For each application/trace, compute CDF percentiles (0.1 .. 1.0)
+    For each application/trace, compute CDF P50
     using the same values plotted in the CDF curves.
     Writes one CSV per app.
     """
-    percentiles = [i / 10.0 for i in range(1, 11)]  # 0.1, 0.2, ... 1.0
+    percentiles = [0.5]
 
     for label, jumps in jump_dict.items():
         if not jumps:
@@ -736,7 +736,7 @@ def write_cdf_percentiles_csv(jump_dict: Dict[str, List[int]], output_dir: Path)
         if n == 0:
             continue
 
-        # compute percentile values
+        # compute percentile value (P50)
         pct_vals = []
         for p in percentiles:
             # percentile index using CDF convention (i/n)
@@ -752,7 +752,7 @@ def write_cdf_percentiles_csv(jump_dict: Dict[str, List[int]], output_dir: Path)
                 w.writerow([p, v])
 
 def main():
-    ap = argparse.ArgumentParser(description="Compute trace statistics and generate percentiles CSV per microbenchmark")
+    ap = argparse.ArgumentParser(description="Compute trace statistics and generate P50 CSV per microbenchmark")
     ap.add_argument("-i", "--inputPath", required=True, help="Parent directory containing binary subdirectories")
     ap.add_argument("-o", "--outputPath", required=True, help="Output directory for CSV files")
     args = ap.parse_args()

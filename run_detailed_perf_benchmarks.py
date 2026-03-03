@@ -13,6 +13,7 @@ import os
 import sys
 import re
 import time
+import shlex
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
@@ -643,7 +644,50 @@ def parse_perf_stat_output(text, elapsed=None):
     return metrics
 
 
-def run_single_cmd_perf_stat(cmd_list, perf_events=None, output_dir=None):
+def _resolve_feature_window(feature_warmup_s: Optional[float], feature_window_s: Optional[float]) -> Tuple[float, float]:
+    """Resolve effective warmup/window from explicit args, then env vars, then defaults."""
+    warmup_val = feature_warmup_s
+    window_val = feature_window_s
+
+    if warmup_val is None:
+        try:
+            warmup_val = float(os.environ.get("FEATURE_WARMUP_S", "0") or 0)
+        except ValueError:
+            warmup_val = 0.0
+    if window_val is None:
+        try:
+            window_val = float(os.environ.get("FEATURE_WINDOW_S", "0") or 0)
+        except ValueError:
+            window_val = 0.0
+
+    warmup_val = max(0.0, float(warmup_val))
+    window_val = max(0.0, float(window_val))
+    return warmup_val, window_val
+
+
+def _build_windowed_cmd(cmd_list: List[str], warmup_s: float, window_s: float) -> List[str]:
+    """Wrap command with optional warmup sleep and timeout window."""
+    if warmup_s <= 0 and window_s <= 0:
+        return cmd_list
+
+    quoted_cmd = " ".join(shlex.quote(tok) for tok in cmd_list)
+    run_part = f"timeout {window_s:g} {quoted_cmd}" if window_s > 0 else quoted_cmd
+
+    if warmup_s > 0:
+        shell_cmd = f"sleep {warmup_s:g}; exec {run_part}"
+    else:
+        shell_cmd = f"exec {run_part}"
+
+    return ["bash", "-lc", shell_cmd]
+
+
+def run_single_cmd_perf_stat(
+    cmd_list,
+    perf_events=None,
+    output_dir=None,
+    feature_warmup_s: Optional[float] = None,
+    feature_window_s: Optional[float] = None,
+):
     """Run perf stat on a single arbitrary command and return parsed metrics dict.
     
     Args:
@@ -659,10 +703,15 @@ def run_single_cmd_perf_stat(cmd_list, perf_events=None, output_dir=None):
                        'L1-dcache-loads,L1-dcache-load-misses,L1-dcache-stores,'
                        'LLC-load-misses,branch-load-misses,branch-misses,r2424')
     
-    perf_cmd = ["sudo", "perf", "stat", "-a", "-e", perf_events, "--"] + cmd_list
+    warmup_s, window_s = _resolve_feature_window(feature_warmup_s, feature_window_s)
+    effective_cmd = _build_windowed_cmd(cmd_list, warmup_s, window_s)
+
+    perf_cmd = ["sudo", "perf", "stat", "-a", "-e", perf_events, "--"] + effective_cmd
     
     print(f"\n{'='*70}")
     print(f"[perf stat] Running: {' '.join(cmd_list)}")
+    if warmup_s > 0 or window_s > 0:
+        print(f"[perf stat] Window mode: warmup={warmup_s:.1f}s, window={window_s:.1f}s")
     print(f"[perf stat] Full command: {' '.join(perf_cmd)}")
     print(f"{'='*70}")
     
@@ -743,6 +792,12 @@ def main():
         help='Run perf stat on a single command. Everything after --cmd is treated as the command. '
              'Example: --cmd sysbench cpu --cpu-max-prime=20000 --threads=8 --time=8 run'
     )
+    parser.add_argument('--feature-warmup-seconds', type=float, default=0.0,
+                        help='Delay before starting command in single-command mode (default: 0)')
+    parser.add_argument('--feature-window-seconds', type=float, default=0.0,
+                        help='Limit command runtime to N seconds in single-command mode (default: 0)')
+    parser.add_argument('--cloud-mode', action='store_true',
+                        help='Convenience mode for cloud workloads: warmup=30s, window=10s')
     
     args = parser.parse_args()
     
@@ -759,8 +814,26 @@ def main():
         output_dir = Path(args.output_dir)
         if not output_dir.is_absolute():
             output_dir = Path.cwd() / output_dir
+
+        warmup_s = float(args.feature_warmup_seconds)
+        window_s = float(args.feature_window_seconds)
+        if args.cloud_mode:
+            warmup_s = 30.0
+            window_s = 10.0
+        if warmup_s < 0 or window_s < 0:
+            print("Error: --feature-warmup-seconds and --feature-window-seconds must be >= 0")
+            sys.exit(1)
+
+        os.environ["FEATURE_WARMUP_S"] = str(warmup_s)
+        os.environ["FEATURE_WINDOW_S"] = str(window_s)
         
-        metrics = run_single_cmd_perf_stat(cmd_list, args.events, str(output_dir))
+        metrics = run_single_cmd_perf_stat(
+            cmd_list,
+            args.events,
+            str(output_dir),
+            feature_warmup_s=warmup_s,
+            feature_window_s=window_s,
+        )
         
         # Save metrics to JSON
         output_dir.mkdir(parents=True, exist_ok=True)

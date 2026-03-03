@@ -5,29 +5,24 @@ Feature Extraction Orchestrator
 Runs all three metric collection tools (perf stat, Intel PT, perfspect) on a
 single command-line benchmark and produces a unified JSON feature-extraction file.
 
-The output JSON contains:
-  - Hardware counter metrics from perf stat (cycles, instructions, IPC, cache misses, etc.)
-  - TMA (Top-down Microarchitecture Analysis) metrics from perfspect
-  - Instruction trace percentile metrics from Intel PT (block sizes, jump distances,
-    branch run lengths, RAW dependency distances, instruction family distributions)
+Cloud workload timing support:
+  - Optional warmup delay (default 0s): start feature extraction after warmup
+  - Optional extraction window (default 0s): extract for N seconds total
+  - Convenience flag --cloud-mode sets warmup=30, window=10
 
-Usage:
-  python3 run_feature_extraction.py --cmd sysbench cpu --cpu-max-prime=20000 --threads=8 --time=8 run
+IMPORTANT:
+  This orchestrator propagates the timing window to the tool runners via
+  environment variables and optional kwargs (when supported):
+    FEATURE_WARMUP_S, FEATURE_WINDOW_S
 
-  Output: sysbench_feature_extraction.json
-
-Options:
-  --output-dir DIR    Base directory for intermediate and final output (default: ./feature_extraction)
-  --benchmark-name N  Override the auto-detected benchmark name
-  --perfspect-bin P   Path to perfspect binary (default: perfspect)
-  --events E          PMU events for perf stat (comma-separated)
-  --skip-perf-stat    Skip the perf stat collection step
-  --skip-intel-pt     Skip the Intel PT collection step
-  --skip-perfspect    Skip the perfspect metrics collection step
+  Your underlying collectors (run_detailed_perf_benchmarks.py,
+  run_perfspect_metrics.py, run_intel_pt_record.py) must respect these variables
+  (or accept the kwargs) for the windowing to actually take effect.
 """
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -36,7 +31,7 @@ from collections import OrderedDict
 
 def extract_benchmark_name(cmd_list):
     """Extract a short benchmark name from the command list.
-    
+
     Uses the basename of the first token (the executable).
     Examples:
       ['sysbench', 'cpu', ...] -> 'sysbench'
@@ -50,6 +45,28 @@ def extract_benchmark_name(cmd_list):
         if exe.endswith(ext):
             exe = exe[:-len(ext)]
     return exe
+
+
+def _set_feature_window_env(warmup_s: float, window_s: float):
+    """
+    Propagate window settings to downstream scripts. This is the lowest-friction way
+    to thread the policy through without breaking existing function signatures.
+    """
+    os.environ["FEATURE_WARMUP_S"] = str(float(warmup_s))
+    os.environ["FEATURE_WINDOW_S"] = str(float(window_s))
+
+
+def _maybe_call_with_window(fn, *args, warmup_s: float, window_s: float, **kwargs):
+    """
+    Call downstream runner functions in a backward-compatible way:
+      - Prefer passing warmup/window kwargs if the callee accepts them.
+      - Otherwise fall back to calling without them (env vars still set).
+    """
+    try:
+        return fn(*args, feature_warmup_s=warmup_s, feature_window_s=window_s, **kwargs)
+    except TypeError:
+        # Downstream runner doesn't accept these kwargs; rely on env vars or old behavior.
+        return fn(*args, **kwargs)
 
 
 def main():
@@ -82,6 +99,27 @@ def main():
     parser.add_argument('--skip-perf-stat', action='store_true', help='Skip perf stat collection')
     parser.add_argument('--skip-intel-pt', action='store_true', help='Skip Intel PT collection')
     parser.add_argument('--skip-perfspect', action='store_true', help='Skip perfspect metrics collection')
+
+    # ---------------- NEW: cloud windowing knobs ----------------
+    parser.add_argument(
+        '--feature-warmup-seconds',
+        type=float,
+        default=0.0,
+        help='Delay (seconds) after benchmark start before feature extraction begins (default: 0)'
+    )
+    parser.add_argument(
+        '--feature-window-seconds',
+        type=float,
+        default=0.0,
+        help='Total duration (seconds) to run feature extraction once started. 0 means full run / existing behavior (default: 0)'
+    )
+    parser.add_argument(
+        '--cloud-mode',
+        action='store_true',
+        help='Convenience mode for cloud workloads: warmup=30s, window=10s'
+    )
+    # ------------------------------------------------------------
+
     parser.add_argument(
         '--cmd',
         nargs=argparse.REMAINDER,
@@ -105,9 +143,24 @@ def main():
         print("Error: --cmd requires a command to run")
         sys.exit(1)
 
+    # ---------------- NEW: resolve window parameters ----------------
+    warmup_s = float(args.feature_warmup_seconds)
+    window_s = float(args.feature_window_seconds)
+    if args.cloud_mode:
+        warmup_s = 30.0
+        window_s = 10.0
+
+    if warmup_s < 0 or window_s < 0:
+        print("Error: --feature-warmup-seconds and --feature-window-seconds must be >= 0")
+        sys.exit(1)
+
+    # Publish to env for downstream tools (even if they don't take kwargs)
+    _set_feature_window_env(warmup_s, window_s)
+    # ---------------------------------------------------------------
+
     # Determine benchmark name and output paths
     benchmark_name = args.benchmark_name or extract_benchmark_name(cmd_list)
-    
+
     output_dir = Path(args.output_dir)
     if not output_dir.is_absolute():
         output_dir = Path.cwd() / output_dir
@@ -119,6 +172,14 @@ def main():
     print(f"Benchmark name: {benchmark_name}")
     print(f"Command: {' '.join(cmd_list)}")
     print(f"Output directory: {output_dir}")
+    # ---------------- NEW: print window policy ----------------
+    if window_s > 0 or warmup_s > 0:
+        print(f"Feature extraction timing: warmup={warmup_s:.1f}s, window={window_s:.1f}s")
+        print(f"  (exported: FEATURE_WARMUP_S={os.environ.get('FEATURE_WARMUP_S')}, "
+              f"FEATURE_WINDOW_S={os.environ.get('FEATURE_WINDOW_S')})")
+    else:
+        print("Feature extraction timing: (default) full run / existing behavior")
+    # ----------------------------------------------------------
     print(f"{'='*70}\n")
 
     # Import the three collection modules
@@ -136,7 +197,17 @@ def main():
         try:
             from run_detailed_perf_benchmarks import run_single_cmd_perf_stat
             perf_stat_dir = str(output_dir / "perf_stat")
-            perf_metrics = run_single_cmd_perf_stat(cmd_list, args.events, perf_stat_dir)
+
+            # NEW: pass window knobs if supported; otherwise env vars apply (or old behavior)
+            perf_metrics = _maybe_call_with_window(
+                run_single_cmd_perf_stat,
+                cmd_list,
+                args.events,
+                perf_stat_dir,
+                warmup_s=warmup_s,
+                window_s=window_s,
+            )
+
             all_metrics.update(perf_metrics)
             print(f"\n[Step 1] Collected {len(perf_metrics)} perf stat metrics")
         except Exception as e:
@@ -154,9 +225,18 @@ def main():
         try:
             from run_perfspect_metrics import run_single_cmd_perfspect
             perfspect_dir = str(output_dir / "perfspect")
-            tma_metrics = run_single_cmd_perfspect(
-                cmd_list, args.perfspect_bin, [], perfspect_dir
+
+            # NEW: pass window knobs if supported; otherwise env vars apply (or old behavior)
+            tma_metrics = _maybe_call_with_window(
+                run_single_cmd_perfspect,
+                cmd_list,
+                args.perfspect_bin,
+                [],
+                perfspect_dir,
+                warmup_s=warmup_s,
+                window_s=window_s,
             )
+
             all_metrics.update(tma_metrics)
             print(f"\n[Step 2] Collected {len(tma_metrics)} TMA metrics")
         except Exception as e:
@@ -174,7 +254,16 @@ def main():
         try:
             from run_intel_pt_record import run_single_cmd_intel_pt
             pt_dir = str(output_dir / "intel_pt")
-            pt_metrics = run_single_cmd_intel_pt(cmd_list, pt_dir)
+
+            # NEW: pass window knobs if supported; otherwise env vars apply (or old behavior)
+            pt_metrics = _maybe_call_with_window(
+                run_single_cmd_intel_pt,
+                cmd_list,
+                pt_dir,
+                warmup_s=warmup_s,
+                window_s=window_s,
+            )
+
             all_metrics.update(pt_metrics)
             print(f"\n[Step 3] Collected {len(pt_metrics)} trace metrics")
         except Exception as e:

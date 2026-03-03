@@ -31,6 +31,43 @@ import sys
 import tempfile
 
 
+def _resolve_feature_window(feature_warmup_s: Optional[float], feature_window_s: Optional[float]) -> tuple:
+    """Resolve effective warmup/window from explicit args, then env vars, then defaults."""
+    warmup_val = feature_warmup_s
+    window_val = feature_window_s
+
+    if warmup_val is None:
+        try:
+            warmup_val = float(os.environ.get("FEATURE_WARMUP_S", "0") or 0)
+        except ValueError:
+            warmup_val = 0.0
+    if window_val is None:
+        try:
+            window_val = float(os.environ.get("FEATURE_WINDOW_S", "0") or 0)
+        except ValueError:
+            window_val = 0.0
+
+    warmup_val = max(0.0, float(warmup_val))
+    window_val = max(0.0, float(window_val))
+    return warmup_val, window_val
+
+
+def _build_windowed_cmd(cmd_list: list, warmup_s: float, window_s: float) -> list:
+    """Wrap command with optional warmup sleep and timeout window."""
+    if warmup_s <= 0 and window_s <= 0:
+        return cmd_list
+
+    quoted_cmd = " ".join(shlex.quote(tok) for tok in cmd_list)
+    run_part = f"timeout {window_s:g} {quoted_cmd}" if window_s > 0 else quoted_cmd
+
+    if warmup_s > 0:
+        shell_cmd = f"sleep {warmup_s:g}; exec {run_part}"
+    else:
+        shell_cmd = f"exec {run_part}"
+
+    return ["bash", "-lc", shell_cmd]
+
+
 def safe_name(s: str) -> str:
     return re.sub(r'[/\\:*?"<>|]', '_', s)
 
@@ -333,7 +370,14 @@ class BenchmarkDiscovery:
         return probe_file
 
 
-def run_single_cmd_perfspect(cmd_list, perfspect_bin='perfspect', extra_args=None, output_dir=None):
+def run_single_cmd_perfspect(
+    cmd_list,
+    perfspect_bin='perfspect',
+    extra_args=None,
+    output_dir=None,
+    feature_warmup_s: Optional[float] = None,
+    feature_window_s: Optional[float] = None,
+):
     """Run perfspect metrics on a single arbitrary command and return parsed TMA metrics.
     
     Args:
@@ -360,13 +404,18 @@ def run_single_cmd_perfspect(cmd_list, perfspect_bin='perfspect', extra_args=Non
     
     if extra_args is None:
         extra_args = []
+
+    warmup_s, window_s = _resolve_feature_window(feature_warmup_s, feature_window_s)
+    effective_cmd = _build_windowed_cmd(cmd_list, warmup_s, window_s)
     
     # Build perfspect command
     perfspect_cmd = [perfspect_bin, "metrics"] + extra_args + \
-                    ["--output", str(perfspect_out_dir), "--"] + cmd_list
+                    ["--output", str(perfspect_out_dir), "--"] + effective_cmd
     
     print(f"\n{'='*70}")
     print(f"[perfspect] Running: {' '.join(cmd_list)}")
+    if warmup_s > 0 or window_s > 0:
+        print(f"[perfspect] Window mode: warmup={warmup_s:.1f}s, window={window_s:.1f}s")
     print(f"[perfspect] Full command: {' '.join(perfspect_cmd)}")
     print(f"{'='*70}")
     
@@ -463,6 +512,12 @@ def main():
         help='Run perfspect metrics on a single command. Everything after --cmd is treated as the command. '
              'Example: --cmd sysbench cpu --cpu-max-prime=20000 --threads=8 --time=8 run'
     )
+    p.add_argument('--feature-warmup-seconds', type=float, default=0.0,
+                   help='Delay before starting command in single-command mode (default: 0)')
+    p.add_argument('--feature-window-seconds', type=float, default=0.0,
+                   help='Limit command runtime to N seconds in single-command mode (default: 0)')
+    p.add_argument('--cloud-mode', action='store_true',
+                   help='Convenience mode for cloud workloads: warmup=30s, window=10s')
 
     args = p.parse_args()
 
@@ -480,9 +535,28 @@ def main():
             print("Error: --cmd requires a command to run")
             import sys
             sys.exit(1)
+
+        warmup_s = float(args.feature_warmup_seconds)
+        window_s = float(args.feature_window_seconds)
+        if args.cloud_mode:
+            warmup_s = 30.0
+            window_s = 10.0
+        if warmup_s < 0 or window_s < 0:
+            print("Error: --feature-warmup-seconds and --feature-window-seconds must be >= 0")
+            sys.exit(1)
+
+        os.environ["FEATURE_WARMUP_S"] = str(warmup_s)
+        os.environ["FEATURE_WINDOW_S"] = str(window_s)
         
         extra_args = shlex.split(args.perfspect_args) if args.perfspect_args else []
-        metrics = run_single_cmd_perfspect(cmd_list, args.perfspect_bin, extra_args, str(out_dir))
+        metrics = run_single_cmd_perfspect(
+            cmd_list,
+            args.perfspect_bin,
+            extra_args,
+            str(out_dir),
+            feature_warmup_s=warmup_s,
+            feature_window_s=window_s,
+        )
         
         # Save metrics to JSON
         out_dir.mkdir(parents=True, exist_ok=True)
